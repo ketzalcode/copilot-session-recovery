@@ -21,7 +21,8 @@ function createRunner(result: ProcessResult = { exitCode: 0, stdout: "", stderr:
 
 test("ensureUserPathEntry uses a fixed PowerShell script and passes the owned bin path through env", async () => {
   const { calls, runner } = createRunner();
-  const binDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save\\bin";
+  const binDir =
+    "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin";
 
   await ensureUserPathEntry(binDir, runner);
 
@@ -33,23 +34,30 @@ test("ensureUserPathEntry uses a fixed PowerShell script and passes the owned bi
     "-NonInteractive",
     "-Command",
   ]);
-  assert.equal(call.env?.COPILOT_AUTO_SAVE_BIN_DIR, binDir);
-  assert.doesNotMatch(call.args[3]!, /ruben|copilot-auto-save\\bin/i);
+  assert.equal(call.env?.COPILOT_SESSION_RECOVERY_BIN_DIR, binDir);
+  assert.doesNotMatch(
+    call.args[3]!,
+    /ruben|copilot-session-recovery\\bin/i,
+  );
   assert.match(call.args[3]!, /GetEnvironmentVariable\('Path', 'User'\)/);
   assert.match(call.args[3]!, /SetEnvironmentVariable\('Path', \$next, 'User'\)/);
 });
 
 test("removeUserPathEntry removes only the normalized owned bin path", async () => {
   const { calls, runner } = createRunner();
-  const binDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save\\bin";
+  const binDir =
+    "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin";
 
   await removeUserPathEntry(binDir, runner);
 
   assert.equal(calls.length, 1);
   const call = calls[0]!;
   assert.equal(call.executable, "powershell.exe");
-  assert.equal(call.env?.COPILOT_AUTO_SAVE_BIN_DIR, binDir);
-  assert.doesNotMatch(call.args[3]!, /ruben|copilot-auto-save\\bin/i);
+  assert.equal(call.env?.COPILOT_SESSION_RECOVERY_BIN_DIR, binDir);
+  assert.doesNotMatch(
+    call.args[3]!,
+    /ruben|copilot-session-recovery\\bin/i,
+  );
   assert.match(call.args[3]!, /TrimEnd\('\\'\)/);
   assert.match(call.args[3]!, /-not \$comparison\.Equals/);
 });

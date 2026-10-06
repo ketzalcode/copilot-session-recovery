@@ -7,8 +7,8 @@ test("buildSelfDeleteInvocation hands cleanup to cmd start and passes targets th
   const request = {
     parentPid: 4242,
     installedExecutable:
-      "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save\\bin\\copilot-auto-save.exe",
-    appDir: "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save",
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
+    appDir: "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery",
     purge: true,
   };
 
@@ -31,16 +31,31 @@ test("buildSelfDeleteInvocation hands cleanup to cmd start and passes targets th
     "-NonInteractive",
   ]);
   assert.equal(invocation.args[9], "-EncodedCommand");
-  assert.match(script, /Wait-Process -Id \(\[int\]\$env:COPILOT_AUTO_SAVE_PARENT_PID\)/);
-  assert.match(script, /Remove-Item -LiteralPath \$env:COPILOT_AUTO_SAVE_APP_DIR -Recurse -Force/);
-  assert.doesNotMatch(script, /Users\\ruben|copilot-auto-save\.exe/);
+  assert.match(
+    script,
+    /Wait-Process -Id \(\[int\]\$env:COPILOT_SESSION_RECOVERY_PARENT_PID\)/,
+  );
+  assert.match(
+    script,
+    /Remove-Item -LiteralPath \$env:COPILOT_SESSION_RECOVERY_APP_DIR -Recurse -Force/,
+  );
+  assert.doesNotMatch(
+    script,
+    /Users\\ruben|copilot-session-recovery\.exe/,
+  );
   assert.equal(invocation.options.stdio, "ignore");
   assert.equal(invocation.options.shell, false);
-  assert.equal(invocation.options.env.COPILOT_AUTO_SAVE_PARENT_PID, "4242");
   assert.equal(
-    invocation.options.env.COPILOT_AUTO_SAVE_INSTALLED_EXE,
+    invocation.options.env.COPILOT_SESSION_RECOVERY_PARENT_PID,
+    "4242",
+  );
+  assert.equal(
+    invocation.options.env.COPILOT_SESSION_RECOVERY_INSTALLED_EXE,
     request.installedExecutable,
   );
-  assert.equal(invocation.options.env.COPILOT_AUTO_SAVE_APP_DIR, request.appDir);
-  assert.equal(invocation.options.env.COPILOT_AUTO_SAVE_PURGE, "1");
+  assert.equal(
+    invocation.options.env.COPILOT_SESSION_RECOVERY_APP_DIR,
+    request.appDir,
+  );
+  assert.equal(invocation.options.env.COPILOT_SESSION_RECOVERY_PURGE, "1");
 });

@@ -5,7 +5,7 @@ import {
 } from "../launch/process-runner.ts";
 
 const ADD_USER_PATH_SCRIPT = String.raw`
-$target = $env:COPILOT_AUTO_SAVE_BIN_DIR
+$target = $env:COPILOT_SESSION_RECOVERY_BIN_DIR
 $current = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($null -eq $current) { $current = '' }
 $parts = @($current -split ';' | Where-Object { $_ })
@@ -17,7 +17,7 @@ if (-not ($parts | Where-Object { $comparison.Equals($_.TrimEnd('\'), $target.Tr
 `;
 
 const REMOVE_USER_PATH_SCRIPT = String.raw`
-$target = $env:COPILOT_AUTO_SAVE_BIN_DIR
+$target = $env:COPILOT_SESSION_RECOVERY_BIN_DIR
 $current = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($null -eq $current) { $current = '' }
 $parts = @($current -split ';' | Where-Object { $_ })
@@ -34,7 +34,7 @@ function buildPowerShellSpec(binDir: string, script: string): ProcessSpec {
     args: ["-NoProfile", "-NonInteractive", "-Command", script],
     env: {
       ...process.env,
-      COPILOT_AUTO_SAVE_BIN_DIR: binDir,
+      COPILOT_SESSION_RECOVERY_BIN_DIR: binDir,
     },
   };
 }

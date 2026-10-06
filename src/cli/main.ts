@@ -41,7 +41,7 @@ import {
 import { resolveAppPaths, type AppPaths } from "../storage/paths.ts";
 
 const HELP_TEXT = [
-  "Usage: copilot-auto-save <command>",
+  "Usage: copilot-session-recovery <command>",
   "",
   "Commands:",
   "  hook session-start",

@@ -207,7 +207,9 @@ async function performInstall(
     deps.output.error(`Warning: ${acl.detail}`);
   }
 
-  deps.output.out(`Installed copilot-auto-save to ${deps.paths.installedExecutable}.`);
+  deps.output.out(
+    `Installed copilot-session-recovery to ${deps.paths.installedExecutable}.`,
+  );
   deps.output.out("Restart already-open terminals to observe the updated PATH.");
 }
 

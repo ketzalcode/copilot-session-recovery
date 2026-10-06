@@ -28,13 +28,13 @@ function createTestPaths(root: string): AppPaths {
   return {
     appDir: root,
     binDir: path.join(root, "bin"),
-    installedExecutable: path.join(root, "bin", "copilot-auto-save.exe"),
+    installedExecutable: path.join(root, "bin", "copilot-session-recovery.exe"),
     configFile: path.join(root, "config.json"),
     registryFile: path.join(root, "sessions.json"),
     lockFile: path.join(root, "sessions.lock"),
     diagnosticsDir: path.join(root, "diagnostics"),
     corruptDir: path.join(root, "corrupt"),
-    copilotHookFile: path.join(root, "hooks", "copilot-auto-save.json"),
+    copilotHookFile: path.join(root, "hooks", "copilot-session-recovery.json"),
   };
 }
 
@@ -179,7 +179,7 @@ test("hook failures return zero and report diagnostics for invalid payloads", as
 
   assert.equal(failure.result, 0);
   assert.equal(failure.stdout, "{}\n");
-  assert.match(failure.stderr, /^copilot-auto-save hook warning: /);
+  assert.match(failure.stderr, /^copilot-session-recovery hook warning: /);
   assert.equal(errors.length, 1);
 });
 
@@ -200,7 +200,10 @@ test("config and corrupt-registry failures return zero and report diagnostics", 
     );
     assert.equal(missingConfig.result, 0);
     assert.equal(missingConfig.stdout, "{}\n");
-    assert.match(missingConfig.stderr, /^copilot-auto-save hook warning: /);
+    assert.match(
+      missingConfig.stderr,
+      /^copilot-session-recovery hook warning: /,
+    );
     assert.equal(configErrors.length, 1);
 
     const corruptErrors: string[] = [];
@@ -216,7 +219,10 @@ test("config and corrupt-registry failures return zero and report diagnostics", 
     );
     assert.equal(corruptRegistry.result, 0);
     assert.equal(corruptRegistry.stdout, "{}\n");
-    assert.match(corruptRegistry.stderr, /^copilot-auto-save hook warning: /);
+    assert.match(
+      corruptRegistry.stderr,
+      /^copilot-session-recovery hook warning: /,
+    );
     assert.equal(corruptErrors.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });

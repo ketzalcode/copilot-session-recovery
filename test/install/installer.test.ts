@@ -84,17 +84,22 @@ function createOutputCapture(): OutputCapture {
 }
 
 function createPaths(): AppPaths {
-  const appDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save";
+  const appDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery";
   return {
     appDir,
     binDir: path.win32.join(appDir, "bin"),
-    installedExecutable: path.win32.join(appDir, "bin", "copilot-auto-save.exe"),
+    installedExecutable: path.win32.join(
+      appDir,
+      "bin",
+      "copilot-session-recovery.exe",
+    ),
     configFile: path.win32.join(appDir, "config.json"),
     registryFile: path.win32.join(appDir, "sessions.json"),
     lockFile: path.win32.join(appDir, "sessions.lock"),
     diagnosticsDir: path.win32.join(appDir, "diagnostics"),
     corruptDir: path.win32.join(appDir, "corrupt"),
-    copilotHookFile: "C:\\Users\\ruben\\.copilot\\hooks\\copilot-auto-save.json",
+    copilotHookFile:
+      "C:\\Users\\ruben\\.copilot\\hooks\\copilot-session-recovery.json",
   };
 }
 
@@ -111,7 +116,8 @@ function createInstallerDependencies(
   const paths = createPaths();
   const outputCapture = createOutputCapture();
   const currentExecutable =
-    overrides.currentExecutable ?? "C:\\Downloads\\copilot-auto-save.exe";
+    overrides.currentExecutable ??
+    "C:\\Downloads\\copilot-session-recovery.exe";
   const remainingFiles = overrides.installed
     ? [
         paths.installedExecutable,
@@ -242,6 +248,7 @@ test("install copies the SEA, creates config once, writes hooks, and adds PATH",
   );
   assert.equal(deps.userPathEntries.at(-1), deps.paths.binDir);
   assert.equal(deps.protectedDirectories.at(-1), deps.paths.appDir);
+  assert.match(deps.outputCapture.text(), /Installed copilot-session-recovery/i);
   assert.match(deps.outputCapture.text(), /restart already-open terminals/i);
 });
 
@@ -273,7 +280,8 @@ test("uninstall preserves state unless purge is explicit", async () => {
 
 test("repair install does not copy the executable over itself", async () => {
   const deps = createInstallerDependencies({
-    currentExecutable: "C:\\Local\\copilot-auto-save\\bin\\copilot-auto-save.exe",
+    currentExecutable:
+      "C:\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
   });
   deps.paths.installedExecutable = deps.currentExecutable;
 

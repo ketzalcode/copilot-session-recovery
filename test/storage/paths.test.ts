@@ -13,11 +13,11 @@ test("uses LOCALAPPDATA and the default Copilot home", () => {
 
   assert.equal(
     paths.registryFile,
-    "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save\\sessions.json",
+    "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\sessions.json",
   );
   assert.equal(
     paths.copilotHookFile,
-    "C:\\Users\\ruben\\.copilot\\hooks\\copilot-auto-save.json",
+    "C:\\Users\\ruben\\.copilot\\hooks\\copilot-session-recovery.json",
   );
 });
 
@@ -30,5 +30,8 @@ test("honors COPILOT_HOME", () => {
     },
   });
 
-  assert.equal(paths.copilotHookFile, "D:\\Copilot\\hooks\\copilot-auto-save.json");
+  assert.equal(
+    paths.copilotHookFile,
+    "D:\\Copilot\\hooks\\copilot-session-recovery.json",
+  );
 });

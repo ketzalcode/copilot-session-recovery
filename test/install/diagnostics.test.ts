@@ -63,17 +63,18 @@ function createOutputCapture(
 }
 
 function createPaths(): AppPaths {
-  const appDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save";
+  const appDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery";
   return {
     appDir,
     binDir: `${appDir}\\bin`,
-    installedExecutable: `${appDir}\\bin\\copilot-auto-save.exe`,
+    installedExecutable: `${appDir}\\bin\\copilot-session-recovery.exe`,
     configFile: `${appDir}\\config.json`,
     registryFile: `${appDir}\\sessions.json`,
     lockFile: `${appDir}\\sessions.lock`,
     diagnosticsDir: `${appDir}\\diagnostics`,
     corruptDir: `${appDir}\\corrupt`,
-    copilotHookFile: "C:\\Users\\ruben\\.copilot\\hooks\\copilot-auto-save.json",
+    copilotHookFile:
+      "C:\\Users\\ruben\\.copilot\\hooks\\copilot-session-recovery.json",
   };
 }
 

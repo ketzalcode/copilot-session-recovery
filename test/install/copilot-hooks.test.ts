@@ -14,20 +14,29 @@ function createPaths(root: string): AppPaths {
   return {
     appDir: root,
     binDir: path.join(root, "bin"),
-    installedExecutable: path.join(root, "bin", "copilot-auto-save.exe"),
+    installedExecutable: path.join(
+      root,
+      "bin",
+      "copilot-session-recovery.exe",
+    ),
     configFile: path.join(root, "config.json"),
     registryFile: path.join(root, "sessions.json"),
     lockFile: path.join(root, "sessions.lock"),
     diagnosticsDir: path.join(root, "diagnostics"),
     corruptDir: path.join(root, "corrupt"),
-    copilotHookFile: path.join(root, ".copilot", "hooks", "copilot-auto-save.json"),
+    copilotHookFile: path.join(
+      root,
+      ".copilot",
+      "hooks",
+      "copilot-session-recovery.json",
+    ),
   };
 }
 
 test("builds an owned direct-exec hook configuration", () => {
   assert.deepEqual(
     buildCopilotHookConfig(
-      "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save\\bin\\copilot-auto-save.exe",
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
     ),
     {
       version: 1,
@@ -35,7 +44,7 @@ test("builds an owned direct-exec hook configuration", () => {
         sessionStart: [
           {
             type: "command",
-            exec: "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save\\bin\\copilot-auto-save.exe",
+            exec: "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
             args: ["hook", "session-start"],
             timeoutSec: 5,
           },
@@ -43,7 +52,7 @@ test("builds an owned direct-exec hook configuration", () => {
         sessionEnd: [
           {
             type: "command",
-            exec: "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save\\bin\\copilot-auto-save.exe",
+            exec: "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
             args: ["hook", "session-end"],
             timeoutSec: 5,
           },
@@ -54,7 +63,9 @@ test("builds an owned direct-exec hook configuration", () => {
 });
 
 test("writes only the owned Copilot hook file", async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "copilot-auto-save-hooks-"));
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "copilot-session-recovery-hooks-"),
+  );
   t.after(async () => {
     await rm(root, { recursive: true, force: true });
   });

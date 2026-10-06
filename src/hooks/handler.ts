@@ -46,7 +46,7 @@ async function handleHook(
   } catch (error) {
     const message = errorMessage(error);
     await deps.writeDiagnostic(message).catch(() => undefined);
-    process.stderr.write(`copilot-auto-save hook warning: ${message}\n`);
+    process.stderr.write(`copilot-session-recovery hook warning: ${message}\n`);
   }
 
   process.stdout.write("{}\n");

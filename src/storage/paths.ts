@@ -37,13 +37,16 @@ export function resolveAppPaths(
       ? env.COPILOT_HOME
       : path.win32.join(userProfile, ".copilot");
 
-  const appDir = path.win32.join(localAppData, "copilot-auto-save");
+  const appDir = path.win32.join(localAppData, "copilot-session-recovery");
   const binDir = path.win32.join(appDir, "bin");
 
   return {
     appDir,
     binDir,
-    installedExecutable: path.win32.join(binDir, "copilot-auto-save.exe"),
+    installedExecutable: path.win32.join(
+      binDir,
+      "copilot-session-recovery.exe",
+    ),
     configFile: path.win32.join(appDir, "config.json"),
     registryFile: path.win32.join(appDir, "sessions.json"),
     lockFile: path.win32.join(appDir, "sessions.lock"),
@@ -52,7 +55,7 @@ export function resolveAppPaths(
     copilotHookFile: path.win32.join(
       copilotHome,
       "hooks",
-      "copilot-auto-save.json",
+      "copilot-session-recovery.json",
     ),
   };
 }

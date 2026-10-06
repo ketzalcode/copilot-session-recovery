@@ -7,7 +7,7 @@ import { main } from "../../src/cli/main.ts";
 import { APP_VERSION } from "../../src/version.ts";
 
 const HELP_TEXT = [
-  "Usage: copilot-auto-save <command>",
+  "Usage: copilot-session-recovery <command>",
   "",
   "Commands:",
   "  hook session-start",

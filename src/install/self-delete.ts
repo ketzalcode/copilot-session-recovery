@@ -34,11 +34,11 @@ export interface SelfDeleteInvocation {
 
 const CLEANUP_SCRIPT = String.raw`
 $ErrorActionPreference = 'SilentlyContinue'
-Wait-Process -Id ([int]$env:COPILOT_AUTO_SAVE_PARENT_PID)
-if ($env:COPILOT_AUTO_SAVE_PURGE -eq '1') {
-  Remove-Item -LiteralPath $env:COPILOT_AUTO_SAVE_APP_DIR -Recurse -Force
+Wait-Process -Id ([int]$env:COPILOT_SESSION_RECOVERY_PARENT_PID)
+if ($env:COPILOT_SESSION_RECOVERY_PURGE -eq '1') {
+  Remove-Item -LiteralPath $env:COPILOT_SESSION_RECOVERY_APP_DIR -Recurse -Force
 } else {
-  Remove-Item -LiteralPath $env:COPILOT_AUTO_SAVE_INSTALLED_EXE -Force
+  Remove-Item -LiteralPath $env:COPILOT_SESSION_RECOVERY_INSTALLED_EXE -Force
 }
 `;
 
@@ -69,10 +69,10 @@ export function buildSelfDeleteInvocation(
       shell: false,
       env: {
         ...baseEnv,
-        COPILOT_AUTO_SAVE_PARENT_PID: String(request.parentPid),
-        COPILOT_AUTO_SAVE_INSTALLED_EXE: request.installedExecutable,
-        COPILOT_AUTO_SAVE_APP_DIR: request.appDir,
-        COPILOT_AUTO_SAVE_PURGE: request.purge ? "1" : "0",
+        COPILOT_SESSION_RECOVERY_PARENT_PID: String(request.parentPid),
+        COPILOT_SESSION_RECOVERY_INSTALLED_EXE: request.installedExecutable,
+        COPILOT_SESSION_RECOVERY_APP_DIR: request.appDir,
+        COPILOT_SESSION_RECOVERY_PURGE: request.purge ? "1" : "0",
       },
     },
   };
