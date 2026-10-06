@@ -37,9 +37,9 @@ git --no-pager diff --check
 
 The release workflow publishes these assets for pushed `v*` tags:
 
-- `dist/copilot-auto-save-windows-x64.exe`
-- `dist/copilot-auto-save-windows-x64.exe.sha256`
-- `dist/copilot-auto-save-windows-x64.spdx.json`
+- `dist/copilot-session-recovery-windows-x64.exe`
+- `dist/copilot-session-recovery-windows-x64.exe.sha256`
+- `dist/copilot-session-recovery-windows-x64.spdx.json`
 - GitHub build provenance attestation for the executable
 
 Local validation does not publish a release.

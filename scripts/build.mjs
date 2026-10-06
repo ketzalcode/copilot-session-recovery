@@ -173,7 +173,7 @@ void main(process.argv.slice(2))
       resolveDir: process.cwd(),
       sourcefile: "dist/sea-entry.ts",
     },
-    outfile: "dist/copilot-auto-save-sea.cjs",
+    outfile: "dist/copilot-session-recovery-sea.cjs",
     bundle: true,
     platform: "node",
     format: "cjs",
@@ -196,9 +196,9 @@ async function buildLegacyWindowsSea(config) {
     );
   }
 
-  const blob = "dist/copilot-auto-save.blob";
+  const blob = "dist/copilot-session-recovery.blob";
   const legacyConfig = "dist/sea-blob-config.json";
-  const seaMain = "dist/copilot-auto-save-sea.cjs";
+  const seaMain = "dist/copilot-session-recovery-sea.cjs";
   await writeFile(
     legacyConfig,
     `${JSON.stringify(
@@ -234,7 +234,7 @@ await mkdir("dist", { recursive: true });
 
 await build({
   entryPoints: ["src/cli/main.ts"],
-  outfile: "dist/copilot-auto-save.mjs",
+  outfile: "dist/copilot-session-recovery.mjs",
   bundle: true,
   platform: "node",
   format: "esm",

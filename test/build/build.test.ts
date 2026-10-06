@@ -52,9 +52,9 @@ test("source CLI entry point runs the exported main function", async () => {
 test("SEA configuration points at the bundled ESM entry", async () => {
   const config = JSON.parse(await readFile("sea-config.json", "utf8"));
   assert.deepEqual(config, {
-    main: "dist/copilot-auto-save.mjs",
+    main: "dist/copilot-session-recovery.mjs",
     mainFormat: "module",
-    output: "dist/copilot-auto-save-windows-x64.exe",
+    output: "dist/copilot-session-recovery-windows-x64.exe",
     disableExperimentalSEAWarning: true,
     useSnapshot: false,
     useCodeCache: false,
@@ -65,6 +65,7 @@ test("SEA configuration points at the bundled ESM entry", async () => {
 test("package scripts run the full release verification pipeline", async () => {
   const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 
+  assert.equal(packageJson.name, "copilot-session-recovery");
   assert.deepEqual(packageJson.scripts, {
     test: "node scripts/test.mjs",
     "test:coverage": "node scripts/test.mjs --coverage",
@@ -90,7 +91,7 @@ test("build script produces an executable that runs the bundled CLI", async () =
   let result = await runNode(["scripts/build.mjs"]);
   assert.equal(result.code, 0, result.stderr);
 
-  result = await runCommand("dist/copilot-auto-save-windows-x64.exe", [
+  result = await runCommand("dist/copilot-session-recovery-windows-x64.exe", [
     "--version",
   ]);
   assert.equal(result.code, 0, result.stderr);

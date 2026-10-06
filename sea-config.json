@@ -1,7 +1,7 @@
 {
-  "main": "dist/copilot-auto-save.mjs",
+  "main": "dist/copilot-session-recovery.mjs",
   "mainFormat": "module",
-  "output": "dist/copilot-auto-save-windows-x64.exe",
+  "output": "dist/copilot-session-recovery-windows-x64.exe",
   "disableExperimentalSEAWarning": true,
   "useSnapshot": false,
   "useCodeCache": false,

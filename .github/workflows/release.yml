@@ -22,14 +22,14 @@ jobs:
       - run: npm run verify
       - uses: anchore/sbom-action@v0.24.3
         with:
-          path: dist/copilot-auto-save-windows-x64.exe
-          output-file: dist/copilot-auto-save-windows-x64.spdx.json
+          path: dist/copilot-session-recovery-windows-x64.exe
+          output-file: dist/copilot-session-recovery-windows-x64.spdx.json
       - uses: actions/attest-build-provenance@v4.2.2
         with:
-          subject-path: dist/copilot-auto-save-windows-x64.exe
+          subject-path: dist/copilot-session-recovery-windows-x64.exe
       - uses: softprops/action-gh-release@v3.0.3
         with:
           files: |
-            dist/copilot-auto-save-windows-x64.exe
-            dist/copilot-auto-save-windows-x64.exe.sha256
-            dist/copilot-auto-save-windows-x64.spdx.json
+            dist/copilot-session-recovery-windows-x64.exe
+            dist/copilot-session-recovery-windows-x64.exe.sha256
+            dist/copilot-session-recovery-windows-x64.spdx.json

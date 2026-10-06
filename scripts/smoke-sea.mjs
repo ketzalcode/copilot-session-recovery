@@ -14,7 +14,7 @@ import { constants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const executable = path.resolve("dist/copilot-auto-save-windows-x64.exe");
+const executable = path.resolve("dist/copilot-session-recovery-windows-x64.exe");
 const sessionA = "502ed8ca-ce22-4e92-b6a7-34eaec25c59d";
 const sessionB = "95d2d9b1-0e6a-48c1-afd6-8a7598128f43";
 
@@ -120,7 +120,7 @@ async function waitFor(predicate, description) {
 
 async function removeUserPathEntry(binDir) {
   const script = String.raw`
-$target = $env:COPILOT_AUTO_SAVE_BIN_DIR
+$target = $env:COPILOT_SESSION_RECOVERY_BIN_DIR
 $current = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($null -eq $current) { $current = '' }
 $parts = @($current -split ';' | Where-Object { $_ })
@@ -136,7 +136,7 @@ $next = ($nextParts -join ';')
     ["-NoProfile", "-NonInteractive", "-Command", script],
     {
       ...process.env,
-      COPILOT_AUTO_SAVE_BIN_DIR: binDir,
+      COPILOT_SESSION_RECOVERY_BIN_DIR: binDir,
     },
   );
 }
@@ -151,19 +151,19 @@ function sessionStartPayload(sessionId, cwd, timestamp) {
 }
 
 function appPaths(localAppData, userProfile, copilotHome) {
-  const appDir = path.win32.join(localAppData, "copilot-auto-save");
+  const appDir = path.win32.join(localAppData, "copilot-session-recovery");
   const binDir = path.win32.join(appDir, "bin");
 
   return {
     appDir,
     binDir,
-    installedExecutable: path.win32.join(binDir, "copilot-auto-save.exe"),
+    installedExecutable: path.win32.join(binDir, "copilot-session-recovery.exe"),
     configFile: path.win32.join(appDir, "config.json"),
     registryFile: path.win32.join(appDir, "sessions.json"),
     copilotHookFile: path.win32.join(
       copilotHome,
       "hooks",
-      "copilot-auto-save.json",
+      "copilot-session-recovery.json",
     ),
   };
 }
@@ -178,7 +178,9 @@ async function assertAbsent(filePath) {
 
 await assertExists(executable);
 
-const root = await mkdtemp(path.join(os.tmpdir(), "copilot-auto-save-sea-"));
+const root = await mkdtemp(
+  path.join(os.tmpdir(), "copilot-session-recovery-sea-"),
+);
 const fakeCommandDir = path.join(root, "fake-bin");
 const localAppData = path.join(root, "AppData", "Local");
 const userProfile = path.join(root, "UserProfile");
@@ -217,7 +219,7 @@ try {
 
   result = await run(executable, ["install", "--profile", "agency"], childEnv);
   assert.equal(result.code, 0, result.stderr);
-  assert.match(result.stdout, /Installed copilot-auto-save/);
+  assert.match(result.stdout, /Installed copilot-session-recovery/);
 
   await assertExists(paths.installedExecutable);
   await assertExists(paths.configFile);

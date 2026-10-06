@@ -1,5 +1,5 @@
 {
-  "name": "copilot-auto-save",
+  "name": "copilot-session-recovery",
   "version": "0.1.0",
   "private": true,
   "type": "module",
