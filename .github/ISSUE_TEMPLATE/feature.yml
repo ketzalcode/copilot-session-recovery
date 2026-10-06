@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a focused Copilot Auto Save improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful change.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope changes
+      description: Check every area this request would change.
+      options:
+        - label: Platform support beyond Windows x64
+        - label: Terminal adapter beyond Windows Terminal
+        - label: Access to private Copilot state or internal cache files
+        - label: Background execution, daemon, service, scheduled task, or watcher
+        - label: Network behavior or telemetry
+        - label: Stored data fields or registry schema
+        - label: Release, SBOM, provenance, or signing flow
+        - label: Runtime npm dependencies
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workaround or smaller approach did you consider?
+    validations:
+      required: false

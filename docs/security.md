@@ -1,0 +1,61 @@
+# Security
+
+## Hook payload validation
+
+Hook handlers accept only official JSON object shapes:
+
+- `sessionStart`: `sessionId`, `timestamp`, `cwd`, `source`
+- `sessionEnd`: `sessionId`, `timestamp`, `cwd`, `reason`
+
+Unexpected fields fail validation. Session IDs must be valid UUIDs, timestamps must be safe non-negative integers, working directories must be non-empty strings, start sources must be `startup`, `resume`, or `new`, and end reasons must be `complete`, `error`, `abort`, `timeout`, or `user_exit`.
+
+Hooks fail open for Copilot. On validation or storage errors, the hook writes a diagnostic log when possible, prints a warning to stderr, prints `{}` to stdout, and exits successfully so Copilot is not blocked.
+
+## No shell execution
+
+Copilot Auto Save launches processes with structured executable and argument arrays. It does not concatenate session IDs, paths, or profile values into shell command strings for recovery.
+
+Windows Terminal recovery uses `wt.exe` arguments built as an array. Launcher profiles are also executable-plus-argument arrays.
+
+## Custom profile trust boundary
+
+Custom launcher profiles are trusted local configuration. The tool validates their schema and placeholder syntax, but it does not decide whether a local executable is safe. Add profiles only for launchers you trust.
+
+Supported placeholders are `{sessionId}`, `{cwd}`, and `{sessionIdPrefix}`.
+
+## User-only state protection
+
+State is stored under `%LOCALAPPDATA%\copilot-auto-save`. Install applies best-effort current-user ACL protection with the current Windows SID and `icacls.exe`. `status` and `doctor` report whether the ACL check can verify current-user protection.
+
+ACL hardening is best effort. If it cannot be verified, the tool reports a warning instead of hiding the failure.
+
+## Atomic writes and corrupt evidence
+
+Registry mutations use an exclusive lock file, bounded retries, stale-lock handling, reread-under-lock, same-directory temporary files, file sync, and atomic rename.
+
+If `sessions.json` is corrupt, the original bytes are preserved under `%LOCALAPPDATA%\copilot-auto-save\corrupt\` using a timestamp and SHA-256-addressed filename. The registry is reset only when the user explicitly runs:
+
+```powershell
+copilot-auto-save doctor --repair-registry
+```
+
+## No network or telemetry
+
+V1 has no runtime network behavior and no telemetry. `npm run audit:runtime` fails if source imports forbidden Node networking modules or uses `fetch` or `WebSocket`, and it fails if runtime npm dependencies are added.
+
+## Release integrity
+
+Release assets include:
+
+- `copilot-auto-save-windows-x64.exe`
+- `copilot-auto-save-windows-x64.exe.sha256`
+- `copilot-auto-save-windows-x64.spdx.json`
+- GitHub build provenance attestation for the executable
+
+Users can compare `Get-FileHash` output with the `.sha256` asset. The release workflow generates the SBOM and provenance in GitHub Actions after `npm run verify` passes.
+
+Local commands build and validate artifacts only. They do not publish GitHub Releases.
+
+## Private Copilot state prohibition
+
+Copilot Auto Save must not read, parse, store, infer, or depend on private Copilot state, internal cache files, prompts, responses, tool output, credentials, tokens, source files, or environment dumps. The only Copilot input accepted by the product is the official lifecycle-hook payload.

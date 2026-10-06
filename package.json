@@ -1,0 +1,24 @@
+{
+  "name": "copilot-auto-save",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.21.0"
+  },
+  "scripts": {
+    "test": "node scripts/test.mjs",
+    "test:coverage": "node scripts/test.mjs --coverage",
+    "typecheck": "tsc --noEmit",
+    "audit:runtime": "node scripts/audit-runtime.mjs",
+    "build": "node scripts/build.mjs",
+    "checksum": "node scripts/checksum.mjs",
+    "smoke:sea": "node scripts/smoke-sea.mjs",
+    "verify": "npm run typecheck && npm test && npm run audit:runtime && npm run build && npm run checksum && npm run smoke:sea"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}

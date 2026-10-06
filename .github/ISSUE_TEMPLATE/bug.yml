@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible Copilot Auto Save problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include prompts, responses, tokens, credentials, private source, or exploit details.
+        Review local paths before sharing diagnostic output.
+  - type: input
+    id: tool-version
+    attributes:
+      label: Copilot Auto Save version
+      description: Run `copilot-auto-save --version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: copilot-version
+    attributes:
+      label: Copilot CLI version
+      description: Run your Copilot CLI version command and paste the version only.
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      description: Include edition and build.
+      placeholder: "Windows 11 Enterprise 24H2 build ..."
+    validations:
+      required: true
+  - type: input
+    id: windows-terminal-version
+    attributes:
+      label: Windows Terminal version
+      description: Include the version that provides `wt.exe`.
+    validations:
+      required: true
+  - type: dropdown
+    id: launcher-profile
+    attributes:
+      label: Launcher profile
+      options:
+        - copilot
+        - agency
+        - custom
+    validations:
+      required: true
+  - type: textarea
+    id: status-output
+    attributes:
+      label: "`copilot-auto-save status` output"
+      description: Review paths for sensitivity before pasting.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: doctor-output
+    attributes:
+      label: "`copilot-auto-save doctor` output"
+      description: Review paths for sensitivity before pasting.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide exact commands and what happened.
+      placeholder: |
+        1. Run ...
+        2. Start a Copilot session in ...
+        3. Run ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

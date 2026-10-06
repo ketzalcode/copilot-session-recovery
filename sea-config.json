@@ -1,0 +1,9 @@
+{
+  "main": "dist/copilot-auto-save.mjs",
+  "mainFormat": "module",
+  "output": "dist/copilot-auto-save-windows-x64.exe",
+  "disableExperimentalSEAWarning": true,
+  "useSnapshot": false,
+  "useCodeCache": false,
+  "useVfs": false
+}
