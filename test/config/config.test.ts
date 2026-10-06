@@ -113,7 +113,7 @@ test("rejects missing default profile references", () => {
 
 test("saveConfig and loadConfig round-trip valid configuration", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-config-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-config-test-"),
   );
 
   try {

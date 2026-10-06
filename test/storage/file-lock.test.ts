@@ -123,7 +123,7 @@ async function waitFor(
 
 test("serializes concurrent writers", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -162,7 +162,7 @@ test("serializes concurrent writers", async () => {
 
 test("default timeout survives a legitimate critical section longer than 1.5 seconds", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -202,7 +202,7 @@ test("default timeout survives a legitimate critical section longer than 1.5 sec
 
 test("removes a stale lock and continues", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -230,7 +230,7 @@ test("removes a stale lock and continues", async () => {
 
 test("retries when a recovery intent appears between acquisition checks", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -296,7 +296,7 @@ test("retries when a recovery intent appears between acquisition checks", async 
 
 test("fresh candidates wait for all stale-recovery intents to clear", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -367,7 +367,7 @@ test("fresh candidates wait for all stale-recovery intents to clear", async () =
 
 test("removes only exact tokenized stale recovery intents", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -410,7 +410,7 @@ test("removes only exact tokenized stale recovery intents", async () => {
 
 test("recovers a stale malformed lock only after it ages out", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -440,7 +440,7 @@ test("recovers a stale malformed lock only after it ages out", async () => {
 
 test("does not recover a fresh malformed lock", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -471,7 +471,7 @@ test("does not recover a fresh malformed lock", async () => {
 
 test("surfaces both action and release failures", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -499,7 +499,7 @@ test("surfaces both action and release failures", async () => {
 
 test("does not reclaim a live lock held past staleAfterMs", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -549,7 +549,7 @@ test("does not reclaim a live lock held past staleAfterMs", async () => {
 
 test("stale waiters do not delete a fresh owner after recovery", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -617,7 +617,7 @@ test("stale waiters do not delete a fresh owner after recovery", async () => {
 
 test("release does not remove a replacement lock", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {
@@ -636,7 +636,7 @@ test("release does not remove a replacement lock", async () => {
 
 test("times out while another writer holds the lock", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-file-lock-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-file-lock-test-"),
   );
 
   try {

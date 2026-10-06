@@ -20,7 +20,7 @@ test("protectStateDirectory grants only the current user SID recursively", async
   ];
 
   const result = await protectStateDirectory(
-    "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save",
+    "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery",
     async (spec) => {
       calls.push(spec);
       return results.shift()!;
@@ -34,7 +34,7 @@ test("protectStateDirectory grants only the current user SID recursively", async
   assert.deepEqual(calls[1], {
     executable: "icacls.exe",
     args: [
-      "C:\\Users\\ruben\\AppData\\Local\\copilot-auto-save",
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery",
       "/inheritance:r",
       "/grant:r",
       "*S-1-5-21-1000-1000-1000-1001:F",

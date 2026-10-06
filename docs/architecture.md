@@ -1,15 +1,15 @@
 # Architecture
 
-Copilot Auto Save uses official GitHub Copilot CLI lifecycle hooks to maintain a local registry of recoverable sessions. It does not inspect Copilot internals or private state.
+Copilot Session Recovery uses official GitHub Copilot CLI lifecycle hooks to maintain a local registry of recoverable sessions. It does not inspect Copilot internals or private state.
 
 ## Data flow
 
-1. `copilot-auto-save install [--profile <name>]` copies the release executable to `%LOCALAPPDATA%\copilot-auto-save\bin\copilot-auto-save.exe`, creates default configuration and registry files, and writes `%USERPROFILE%\.copilot\hooks\copilot-auto-save.json`.
-2. Copilot invokes `copilot-auto-save hook session-start` and `copilot-auto-save hook session-end` with official JSON hook payloads.
-3. Hook handlers validate payload shape, fields, and enum values, then update `%LOCALAPPDATA%\copilot-auto-save\sessions.json` under `%LOCALAPPDATA%\copilot-auto-save\sessions.lock`.
-4. Registry writes use same-directory temporary files and atomic rename. Corrupt registries are copied to `%LOCALAPPDATA%\copilot-auto-save\corrupt\` before the command fails.
-5. `copilot-auto-save recover-sessions` reads the registry and config, validates `wt.exe`, validates each launcher executable, skips records whose working directory is missing, shows a table, confirms once, and launches Windows Terminal with `new-tab` commands.
-6. `copilot-auto-save add` lets a user adopt a session that started before hook installation. It validates the full session UUID, working directory, and launcher profile, then applies the same locked `resume` lifecycle transition used by hooks.
+1. `copilot-session-recovery install [--profile <name>]` copies the release executable to `%LOCALAPPDATA%\copilot-session-recovery\bin\copilot-session-recovery.exe`, creates default configuration and registry files, and writes `%USERPROFILE%\.copilot\hooks\copilot-session-recovery.json`.
+2. Copilot invokes `copilot-session-recovery hook session-start` and `copilot-session-recovery hook session-end` with official JSON hook payloads.
+3. Hook handlers validate payload shape, fields, and enum values, then update `%LOCALAPPDATA%\copilot-session-recovery\sessions.json` under `%LOCALAPPDATA%\copilot-session-recovery\sessions.lock`.
+4. Registry writes use same-directory temporary files and atomic rename. Corrupt registries are copied to `%LOCALAPPDATA%\copilot-session-recovery\corrupt\` before the command fails.
+5. `copilot-session-recovery recover-sessions` reads the registry and config, validates `wt.exe`, validates each launcher executable, skips records whose working directory is missing, shows a table, confirms once, and launches Windows Terminal with `new-tab` commands.
+6. `copilot-session-recovery add` lets a user adopt a session that started before hook installation. It validates the full session UUID, working directory, and launcher profile, then applies the same locked `resume` lifecycle transition used by hooks.
 6. Successful Windows Terminal launch does not remove registry records. Later Copilot `session-start` and clean `session-end` hooks remain authoritative.
 
 ## Components
@@ -71,6 +71,6 @@ npm run checksum
 npm run smoke:sea
 ```
 
-`npm run build` creates `dist/copilot-auto-save.mjs` and `dist/copilot-auto-save-windows-x64.exe`. `npm run checksum` creates `dist/copilot-auto-save-windows-x64.exe.sha256`. The release workflow also creates `dist/copilot-auto-save-windows-x64.spdx.json` and a GitHub provenance attestation.
+`npm run build` creates `dist/copilot-session-recovery.mjs` and `dist/copilot-session-recovery-windows-x64.exe`. `npm run checksum` creates `dist/copilot-session-recovery-windows-x64.exe.sha256`. The release workflow also creates `dist/copilot-session-recovery-windows-x64.spdx.json` and a GitHub provenance attestation.
 
 Local commands do not publish releases. GitHub Releases are created only by `.github/workflows/release.yml` when a `v*` tag is pushed.

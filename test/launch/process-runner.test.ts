@@ -8,7 +8,7 @@ import { commandExists } from "../../src/launch/process-runner.ts";
 
 test("commandExists rejects directories for path-like executables", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-process-runner-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-process-runner-test-"),
   );
 
   try {
@@ -20,7 +20,7 @@ test("commandExists rejects directories for path-like executables", async () => 
 
 test("commandExists accepts an existing path-like executable file", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-process-runner-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-process-runner-test-"),
   );
   const executable = path.join(directory, "copilot.cmd");
 

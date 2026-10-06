@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible Copilot Auto Save problem.
+description: Report a reproducible Copilot Session Recovery problem.
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -11,8 +11,8 @@ body:
   - type: input
     id: tool-version
     attributes:
-      label: Copilot Auto Save version
-      description: Run `copilot-auto-save --version`.
+      label: Copilot Session Recovery version
+      description: Run `copilot-session-recovery --version`.
       placeholder: "0.1.0"
     validations:
       required: true
@@ -51,7 +51,7 @@ body:
   - type: textarea
     id: status-output
     attributes:
-      label: "`copilot-auto-save status` output"
+      label: "`copilot-session-recovery status` output"
       description: Review paths for sensitivity before pasting.
       render: text
     validations:
@@ -59,7 +59,7 @@ body:
   - type: textarea
     id: doctor-output
     attributes:
-      label: "`copilot-auto-save doctor` output"
+      label: "`copilot-session-recovery doctor` output"
       description: Review paths for sensitivity before pasting.
       render: text
     validations:

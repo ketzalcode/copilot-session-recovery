@@ -8,7 +8,7 @@ import { atomicWriteJson } from "../../src/storage/atomic-json.ts";
 
 test("atomicWriteJson writes JSON content", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-atomic-json-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-atomic-json-test-"),
   );
 
   try {
@@ -30,7 +30,7 @@ test("atomicWriteJson writes JSON content", async () => {
 
 test("atomicWriteJson removes its temp file when serialization fails", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-atomic-json-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-atomic-json-test-"),
   );
 
   try {

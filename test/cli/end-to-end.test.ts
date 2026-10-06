@@ -111,7 +111,7 @@ async function createCommandShim(
     path.join(binDir, `${name}.cmd`),
     [
       "@echo off",
-      `set COPILOT_AUTO_SAVE_FAKE_NAME=${name}`,
+      `set COPILOT_SESSION_RECOVERY_FAKE_NAME=${name}`,
       `"${process.execPath}" "${fakeCommandPath}" %*`,
       "",
     ].join("\r\n"),
@@ -192,7 +192,7 @@ async function createEndToEndFixture(
   fakeLogFile: string;
   cwdBySession: Record<string, string>;
 }> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "copilot-auto-save-e2e-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "copilot-session-recovery-e2e-"));
   t.after(async () => {
     await rm(root, { recursive: true, force: true });
   });
@@ -207,8 +207,8 @@ async function createEndToEndFixture(
   env.LOCALAPPDATA = localAppData;
   env.USERPROFILE = userProfile;
   env.COPILOT_HOME = copilotHome;
-  env.COPILOT_AUTO_SAVE_FAKE_LOG = fakeLogFile;
-  env.COPILOT_AUTO_SAVE_FAKE_COMMAND_PATH = fakeCommandPath;
+  env.COPILOT_SESSION_RECOVERY_FAKE_LOG = fakeLogFile;
+  env.COPILOT_SESSION_RECOVERY_FAKE_COMMAND_PATH = fakeCommandPath;
   env.PATH = `${fakeBin};${env.PATH ?? env.Path ?? ""}`;
 
   const paths = resolveAppPaths({ env });

@@ -37,13 +37,13 @@ function createTestPaths(root: string): AppPaths {
   return {
     appDir: root,
     binDir: path.join(root, "bin"),
-    installedExecutable: path.join(root, "bin", "copilot-auto-save.exe"),
+    installedExecutable: path.join(root, "bin", "copilot-session-recovery.exe"),
     configFile: path.join(root, "config.json"),
     registryFile: path.join(root, "sessions.json"),
     lockFile: path.join(root, "sessions.lock"),
     diagnosticsDir: path.join(root, "diagnostics"),
     corruptDir: path.join(root, "corrupt"),
-    copilotHookFile: path.join(root, "hooks", "copilot-auto-save.json"),
+    copilotHookFile: path.join(root, "hooks", "copilot-session-recovery.json"),
   };
 }
 
@@ -64,7 +64,7 @@ function startEvent(
 
 test("missing registry reads as an empty registry", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-registry-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-registry-test-"),
   );
 
   try {
@@ -113,7 +113,7 @@ test("parseRegistry rejects unexpected session fields", () => {
 
 test("updateRegistry rereads under the lock and preserves both updates", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-registry-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-registry-test-"),
   );
 
   try {
@@ -121,7 +121,7 @@ test("updateRegistry rereads under the lock and preserves both updates", async (
     const firstStart = startEvent(firstId, "C:\\src\\ms-pal", "new");
     const secondStart = startEvent(
       secondId,
-      "C:\\src\\copilot-auto-save",
+      "C:\\src\\copilot-session-recovery",
       "resume",
       startTimestamp + 10_000,
     );
@@ -148,7 +148,7 @@ test("updateRegistry rereads under the lock and preserves both updates", async (
 
 test("corrupt JSON is copied to hash-addressed evidence and never replaced", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-registry-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-registry-test-"),
   );
 
   try {
@@ -185,7 +185,7 @@ test("corrupt JSON is copied to hash-addressed evidence and never replaced", asy
 
 test("corrupt evidence preserves the exact rejected bytes if sessions.json is replaced after read", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-registry-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-registry-test-"),
   );
 
   try {
@@ -224,7 +224,7 @@ test("corrupt evidence preserves the exact rejected bytes if sessions.json is re
 
 test("post-read metadata failure still preserves corrupt evidence", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-registry-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-registry-test-"),
   );
 
   try {
@@ -261,7 +261,7 @@ test("post-read metadata failure still preserves corrupt evidence", async () => 
 
 test("resetCorruptRegistry preserves evidence and replaces the registry with an empty one", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-registry-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-registry-test-"),
   );
 
   try {
@@ -280,7 +280,7 @@ test("resetCorruptRegistry preserves evidence and replaces the registry with an 
 
 test("removeSessionByPrefix matches prefixes case-insensitively and preserves stored IDs", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-registry-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-registry-test-"),
   );
 
   try {
@@ -317,7 +317,7 @@ test("removeSessionByPrefix matches prefixes case-insensitively and preserves st
 
 test("pruneMissingWorkingDirectories removes only approved sessions whose working directories are missing", async () => {
   const directory = await mkdtemp(
-    path.join(tmpdir(), "copilot-auto-save-registry-test-"),
+    path.join(tmpdir(), "copilot-session-recovery-registry-test-"),
   );
 
   try {

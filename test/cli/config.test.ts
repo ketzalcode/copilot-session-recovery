@@ -65,7 +65,7 @@ async function createConfigTestDependencies(
   t: test.TestContext,
   config: AppConfig,
 ): Promise<ConfigTestDependencies> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "copilot-auto-save-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "copilot-session-recovery-"));
   t.after(async () => {
     await rm(root, { recursive: true, force: true });
   });
@@ -73,13 +73,13 @@ async function createConfigTestDependencies(
   const paths: AppPaths = {
     appDir: root,
     binDir: path.join(root, "bin"),
-    installedExecutable: path.join(root, "bin", "copilot-auto-save.exe"),
+    installedExecutable: path.join(root, "bin", "copilot-session-recovery.exe"),
     configFile: path.join(root, "config.json"),
     registryFile: path.join(root, "sessions.json"),
     lockFile: path.join(root, "sessions.lock"),
     diagnosticsDir: path.join(root, "diagnostics"),
     corruptDir: path.join(root, "corrupt"),
-    copilotHookFile: path.join(root, "copilot-auto-save.json"),
+    copilotHookFile: path.join(root, "copilot-session-recovery.json"),
   };
 
   await saveConfig(paths.configFile, config);

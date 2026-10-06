@@ -66,7 +66,7 @@ async function fakeRunProcess(
       env: {
         ...process.env,
         ...spec.env,
-        COPILOT_AUTO_SAVE_FAKE_NAME: spec.executable,
+        COPILOT_SESSION_RECOVERY_FAKE_NAME: spec.executable,
       },
       shell: false,
       windowsHide: true,
@@ -93,7 +93,7 @@ async function fakeRunProcess(
   });
 }
 
-const fakeCommandPath = process.env.COPILOT_AUTO_SAVE_FAKE_COMMAND_PATH;
+const fakeCommandPath = process.env.COPILOT_SESSION_RECOVERY_FAKE_COMMAND_PATH;
 
 process.exitCode = await main(
   process.argv.slice(2),

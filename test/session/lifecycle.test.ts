@@ -119,7 +119,7 @@ test("repeated start refreshes cwd and source but keeps the first start details"
   const actual = applyLifecycleEvent(
     started,
     startEvent({
-      cwd: "C:\\src\\copilot-auto-save",
+      cwd: "C:\\src\\copilot-session-recovery",
       source: "resume",
       timestamp: startedAt + 30_000,
     }),
@@ -128,7 +128,7 @@ test("repeated start refreshes cwd and source but keeps the first start details"
 
   assert.deepEqual(actual.sessions[sessionId], {
     sessionId,
-    cwd: "C:\\src\\copilot-auto-save",
+    cwd: "C:\\src\\copilot-session-recovery",
     launcherProfile: "copilot",
     source: "resume",
     startedAt: "2026-10-05T18:10:00.000Z",
