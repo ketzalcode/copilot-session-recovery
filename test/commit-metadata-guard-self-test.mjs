@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(ROOT, '.github', 'scripts', 'check-commit-metadata.mjs');
 const APPROVED = '17255390+RubenSaucedo@users.noreply.github.com';
 const scratch = mkdtempSync(join(tmpdir(), 'recovery-commit-metadata-'));
+const workflow = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+
+assert.match(
+  workflow,
+  /--base "\$env:BASE_SHA" --head "\$env:HEAD_SHA"/,
+  'Windows CI must read commit range values from the PowerShell environment',
+);
 
 function git(repo, args, env = {}) {
   return execFileSync('git', ['-C', repo, ...args], {

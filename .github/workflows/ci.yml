@@ -25,7 +25,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node .github/scripts/check-commit-metadata.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+        run: node .github/scripts/check-commit-metadata.mjs --base "$env:BASE_SHA" --head "$env:HEAD_SHA"
       - run: npm ci
       - run: npm run verify
       - uses: actions/upload-artifact@v7.0.1
