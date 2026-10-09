@@ -6,11 +6,8 @@ import {
   protectMacState,
   type ProtectionResult,
 } from "./macos-permissions.ts";
-import {
-  type ProcessRunner,
-  type ProcessResult,
-} from "../launch/process-runner.ts";
-import type { TerminalLauncher } from "../launch/terminal.ts";
+import { createMacTerminalLauncherWithDependencies } from "../launch/macos-terminal.ts";
+import { type ProcessRunner } from "../launch/process-runner.ts";
 import type { AppPaths } from "../storage/paths.ts";
 
 function resolveCopilotHome(env: NodeJS.ProcessEnv): string {
@@ -73,25 +70,17 @@ export function createMacosPlatformAdapter(
   const protectState = dependencies.protectState ?? protectMacState;
   const checkStateProtection =
     dependencies.checkStateProtection ?? checkMacStateProtection;
-  const unavailableMessage =
-    "Apple Terminal session recovery is not available on macOS yet.";
-  const unsupportedRecovery = async (): Promise<ProcessResult> => {
-    throw new Error(unavailableMessage);
-  };
-  const terminal: TerminalLauncher = {
-    name: "Apple Terminal",
-    command: "/usr/bin/osascript",
-    unavailableMessage,
-    unavailableFix:
-      "Use Windows x64 for session recovery until macOS terminal launch support is implemented.",
-    async available() {
-      return false;
+  const terminal = createMacTerminalLauncherWithDependencies(
+    resolveMacosPaths({ HOME: "/Users/copilot" }),
+    {
+      ...(dependencies.commandExists === undefined
+        ? {}
+        : { commandExists: dependencies.commandExists }),
+      ...(dependencies.runProcess === undefined
+        ? {}
+        : { runProcess: dependencies.runProcess }),
     },
-    preview() {
-      throw new Error(unavailableMessage);
-    },
-    launch: unsupportedRecovery,
-  };
+  );
 
   return {
     id: "macos",

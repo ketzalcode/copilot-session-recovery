@@ -19,6 +19,10 @@ export type AttachedSpawner = (
   spec: ProcessSpec & { cwd: string },
 ) => AttachedSpawnerResult | Promise<AttachedSpawnerResult>;
 
+export interface LaunchNextOptions {
+  onSpawnFailure?: (message: string) => void;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -110,6 +114,7 @@ async function recordLaunchFailure(
 export async function launchNext(
   paths: AppPaths,
   spawnAttached: AttachedSpawner = spawnAttachedProcess,
+  options: LaunchNextOptions = {},
 ): Promise<number> {
   const claim = await claimNextLaunch(paths);
   if (claim === undefined) {
@@ -134,7 +139,9 @@ export async function launchNext(
     return await handle.exitCode;
   } catch (error) {
     if (!claimCompleted) {
-      await recordLaunchFailure(paths, claim.token, error);
+      const failureMessage = errorMessage(error);
+      await recordLaunchFailure(paths, claim.token, failureMessage);
+      options.onSpawnFailure?.(failureMessage);
     }
 
     return 1;

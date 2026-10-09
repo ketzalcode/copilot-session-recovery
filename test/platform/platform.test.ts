@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { LAUNCH_NEXT_COMMAND } from "../../src/launch/macos-terminal.ts";
 import { createMacosPlatformAdapter } from "../../src/platform/macos.ts";
 import {
   assertSupportedPlatform,
@@ -92,7 +93,7 @@ test("Windows adapter exposes state protection and terminal checks", async () =>
   ]);
 });
 
-test("macOS adapter reports recovery unavailable until Apple Terminal launch support lands", async () => {
+test("macOS adapter delegates availability checks and preview to the Apple Terminal launcher", async () => {
   const paths = createPlatformAdapter("darwin", "x64").resolvePaths({
     HOME: "/Users/ruben",
   });
@@ -132,19 +133,42 @@ test("macOS adapter reports recovery unavailable until Apple Terminal launch sup
     protected: true,
     detail: "checked",
   });
-  assert.equal(await adapter.terminal.available(), false);
+  assert.equal(await adapter.terminal.available(), true);
+  assert.equal(
+    adapter.terminal.preview(
+      [
+        {
+          sessionId: "502ed8ca-ce22-4e92-b6a7-34eaec25c59d",
+          cwd: "/Users/ruben/src/ms-pal",
+          title: "ms-pal - 502ed8c",
+          launcherProfile: "agency",
+          process: {
+            executable: "agency",
+            args: ["copilot", "--resume=502ed8ca-ce22-4e92-b6a7-34eaec25c59d"],
+          },
+          lastSeenAt: "2026-10-05T18:00:00.000Z",
+        },
+      ],
+      paths,
+    ),
+    `Apple Terminal tab count: 1\n${LAUNCH_NEXT_COMMAND}`,
+  );
   assert.match(
-    adapter.terminal.unavailableMessage ?? "",
-    /not available on macOS yet/i,
+    processCalls[0]?.executable ?? "",
+    /\/usr\/bin\/open/,
   );
-  assert.throws(
-    () => adapter.terminal.preview([], paths),
-    /not available on macOS yet/i,
+  assert.deepEqual(processCalls[0], {
+    executable: "/usr/bin/open",
+    args: ["-Ra", "Terminal"],
+  });
+  assert.deepEqual(commandChecks, [
+    {
+      executable: "/usr/bin/osascript",
+      platform: "darwin",
+    },
+  ]);
+  assert.doesNotMatch(
+    adapter.terminal.preview([], paths),
+    /sessionId|cwd|launcherProfile|--resume=/,
   );
-  await assert.rejects(
-    adapter.terminal.launch([], paths),
-    /not available on macOS yet/i,
-  );
-  assert.deepEqual(commandChecks, []);
-  assert.deepEqual(processCalls, []);
 });

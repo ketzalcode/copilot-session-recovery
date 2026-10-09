@@ -25,6 +25,7 @@ export type ConfigAction =
 
 export type ParsedCommand =
   | { name: "hook"; event: "session-start" | "session-end" }
+  | { name: "launch-next" }
   | { name: "install"; options: { profile?: string } }
   | { name: "status" }
   | { name: "doctor"; options: { repairRegistry: boolean } }
@@ -37,6 +38,16 @@ export type ParsedCommand =
   | { name: "config"; action: ConfigAction }
   | { name: "version" }
   | { name: "help" };
+
+function parseLaunchNext(argv: readonly string[]): ParsedCommand {
+  if (argv.length !== 1) {
+    throw new Error("Command launch-next does not accept arguments.");
+  }
+
+  return {
+    name: "launch-next",
+  };
+}
 
 function parseInstall(argv: readonly string[]): ParsedCommand {
   const options: { profile?: string } = {};
@@ -373,6 +384,10 @@ export function parseCliArguments(argv: readonly string[]): ParsedCommand {
     argv.length === 2
   ) {
     return { name: "hook", event: argv[1] };
+  }
+
+  if (argv[0] === "launch-next") {
+    return parseLaunchNext(argv);
   }
 
   if (argv[0] === "install") {

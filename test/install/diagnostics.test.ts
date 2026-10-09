@@ -278,7 +278,7 @@ test("healthy Windows diagnostics use the runtime installation and adapter check
   );
 });
 
-test("macOS diagnostics report recovery unavailable until launch support lands", async () => {
+test("macOS diagnostics report Apple Terminal availability through the adapter", async () => {
   const deps = createDiagnosticDependencies({ platformId: "darwin" });
   const report = await collectDiagnostics(deps);
 
@@ -294,7 +294,7 @@ test("macOS diagnostics report recovery unavailable until launch support lands",
       "launcher",
     ],
   );
-  assert.equal(report.healthy, false);
+  assert.equal(report.healthy, true);
   assert.equal(
     findCheck(report, "runtime").summary,
     "Installed npm runtime is available.",
@@ -305,13 +305,14 @@ test("macOS diagnostics report recovery unavailable until launch support lands",
   );
   assert.equal(
     findCheck(report, "terminal").summary,
-    "Apple Terminal is unavailable.",
+    "Apple Terminal is available.",
   );
-  assert.match(
-    findCheck(report, "terminal").detail ?? "",
-    /not available on macOS yet/i,
-  );
-  assert.deepEqual(deps.processCalls, []);
+  assert.deepEqual(deps.processCalls, [
+    {
+      executable: "/usr/bin/open",
+      args: ["-Ra", "Terminal"],
+    },
+  ]);
 });
 
 test("missing nodeExecutable reports a runtime error", async () => {
@@ -396,6 +397,10 @@ test("launcher lookup receives the current macOS platform", async () => {
   await collectDiagnostics(deps);
 
   assert.deepEqual(deps.commandChecks, [
+    {
+      executable: "/usr/bin/osascript",
+      platform: "darwin",
+    },
     {
       executable: config.profiles[config.defaultProfile]!.executable,
       platform: "darwin",

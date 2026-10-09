@@ -1,4 +1,5 @@
 import { loadConfig, parseConfig, saveConfig } from "../config/config.ts";
+import { launchNext } from "../launch/launch-next.ts";
 import {
   commandExists as defaultCommandExists,
   type ProcessSpec,
@@ -61,6 +62,13 @@ export interface ConfigCommandDependencies {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function writeLaunchFailure(
+  message: string,
+  writeError: (text: string) => void,
+): void {
+  writeError(`${message.trimEnd()}\n`);
 }
 
 function emptyProcess(): ProcessSpec {
@@ -200,6 +208,17 @@ export function createRecoverDependencies(
     directoryExists,
     commandExists: defaultCommandExists,
   };
+}
+
+export async function launchNextCommand(
+  paths: AppPaths,
+  writeError: (text: string) => void,
+): Promise<number> {
+  return launchNext(paths, undefined, {
+    onSpawnFailure(message) {
+      writeLaunchFailure(message, writeError);
+    },
+  });
 }
 
 export async function listSessionsCommand(

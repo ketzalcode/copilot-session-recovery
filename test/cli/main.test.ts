@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { parseCliArguments } from "../../src/cli/arguments.ts";
 import { main } from "../../src/cli/main.ts";
 import type { InstallerDependencies } from "../../src/install/installer.ts";
+import { createLaunchPlan, type LaunchPlan } from "../../src/launch/launch-plan.ts";
 import type { PlatformAdapter } from "../../src/platform/platform.ts";
 import type { RuntimeInstallation } from "../../src/runtime/installation.ts";
+import type { RecoveryTab } from "../../src/launch/recovery-plan.ts";
+import type { AppPaths } from "../../src/storage/paths.ts";
+import { atomicWriteJson } from "../../src/storage/atomic-json.ts";
 import { APP_VERSION } from "../../src/version.ts";
 
 const HELP_TEXT = [
@@ -34,6 +41,13 @@ const HELP_TEXT = [
 
 const workerPath = fileURLToPath(
   new URL("../fixtures/hook-worker.ts", import.meta.url),
+);
+const runtimeRoot = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "fixtures",
+  "runtime",
+  "main",
 );
 const PLATFORM_ENV_KEYS = [
   ["ComSpec"],
@@ -140,6 +154,34 @@ function createInstallerDependencies(): InstallerDependencies {
   };
 }
 
+function runtimePath(name: string): string {
+  return path.join(runtimeRoot, `${process.pid}-${name}`);
+}
+
+function createPaths(root: string): AppPaths {
+  return {
+    appDir: root,
+    configFile: path.join(root, "config.json"),
+    registryFile: path.join(root, "sessions.json"),
+    lockFile: path.join(root, "sessions.lock"),
+    diagnosticsDir: path.join(root, "diagnostics"),
+    corruptDir: path.join(root, "corrupt"),
+    copilotHookFile: path.join(root, "copilot-session-recovery.json"),
+    launchPlanFile: path.join(root, "launch-plan.json"),
+    launchPlanLockFile: path.join(root, "launch-plan.lock"),
+  };
+}
+
+async function createRuntimePaths(t: test.TestContext): Promise<AppPaths> {
+  const root = runtimePath("state");
+  await rm(root, { recursive: true, force: true });
+  await mkdir(root, { recursive: true });
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  return createPaths(root);
+}
+
 async function captureProcessOutput<T>(
   action: () => Promise<T>,
 ): Promise<CapturedOutput<T>> {
@@ -224,6 +266,7 @@ test("main writes help text for --help", async () => {
   assert.equal(output.result, 0);
   assert.equal(output.stdout, HELP_TEXT);
   assert.equal(output.stderr, "");
+  assert.doesNotMatch(output.stdout, /launch-next/);
 });
 
 test("main writes the version for --version", async () => {
@@ -242,8 +285,109 @@ test("unknown commands exit with code 1 and print the parse error", async () => 
   assert.match(result.stderr, /Unknown command: unknown-command/);
 });
 
+test("parseCliArguments parses launch-next and rejects extra arguments", () => {
+  assert.deepEqual(parseCliArguments(["launch-next"]), {
+    name: "launch-next",
+  });
+  assert.throws(
+    () => parseCliArguments(["launch-next", "--wat"]),
+    /does not accept arguments/i,
+  );
+});
+
 test("main accepts installer dependencies with npm runtime installation data", async () => {
   const dependencies = createInstallerDependencies();
 
   assert.equal(await main(["install"], { installerDependencies: dependencies }), 0);
+});
+
+test("main routes launch-next and prints recorded spawn failures to stderr", async (t) => {
+  const paths = await createRuntimePaths(t);
+  const cwd = path.join(paths.appDir, "cwd");
+  await mkdir(cwd, { recursive: true });
+
+  const tabs: RecoveryTab[] = [
+    {
+      sessionId: "502ed8ca-ce22-4e92-b6a7-34eaec25c59d",
+      cwd,
+      title: "ms-pal - 502ed8c",
+      launcherProfile: "copilot",
+      process: {
+        executable: path.join(paths.appDir, "missing-copilot.cmd"),
+        args: ["--resume=502ed8ca-ce22-4e92-b6a7-34eaec25c59d"],
+      },
+      lastSeenAt: "2026-10-08T18:00:00.000Z",
+    },
+  ];
+  await createLaunchPlan(paths, tabs);
+
+  const output = await captureProcessOutput(() =>
+    main(["launch-next"], { paths }),
+  );
+
+  assert.equal(output.result, 1);
+  assert.equal(output.stdout, "");
+  assert.match(output.stderr, /(EINVAL|ENOENT)/);
+
+  const plan = JSON.parse(
+    await readFile(paths.launchPlanFile, "utf8"),
+  ) as LaunchPlan;
+  assert.equal(plan.entries[0]?.status, "failed");
+});
+
+test("main does not print stale failed-launch errors when a claimed child exits nonzero after spawning", async (t) => {
+  const paths = await createRuntimePaths(t);
+  const cwd = path.join(paths.appDir, "cwd");
+  await mkdir(cwd, { recursive: true });
+
+  const pendingTabs: RecoveryTab[] = [
+    {
+      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+      cwd,
+      title: "ms-pal - de305d5",
+      launcherProfile: "copilot",
+      process: {
+        executable: process.execPath,
+        args: ["-e", "process.exit(1)"],
+      },
+      lastSeenAt: "2026-10-08T18:00:00.000Z",
+    },
+  ];
+  await createLaunchPlan(paths, pendingTabs);
+
+  const initialPlan = JSON.parse(
+    await readFile(paths.launchPlanFile, "utf8"),
+  ) as LaunchPlan;
+  await atomicWriteJson(paths.launchPlanFile, {
+    ...initialPlan,
+    entries: [
+      {
+        id: "failed-entry",
+        cwd,
+        process: {
+          executable: "copilot",
+          args: ["--resume=failed-entry"],
+        },
+        status: "failed",
+        error: "stale spawn failure",
+      },
+      ...initialPlan.entries,
+    ],
+  });
+
+  const output = await captureProcessOutput(() =>
+    main(["launch-next"], { paths }),
+  );
+
+  assert.equal(output.result, 1);
+  assert.equal(output.stdout, "");
+  assert.equal(output.stderr, "");
+
+  const plan = JSON.parse(
+    await readFile(paths.launchPlanFile, "utf8"),
+  ) as LaunchPlan;
+  assert.deepEqual(
+    plan.entries.map((entry) => entry.status),
+    ["failed", "launched"],
+  );
 });

@@ -9,6 +9,7 @@ import {
   doctorCommand,
   installCommand,
   listSessionsCommand,
+  launchNextCommand,
   pruneSessionsCommand,
   recoverSessionsCommand,
   removeSessionCommand,
@@ -162,13 +163,26 @@ export async function main(
     return 0;
   }
 
-  const { platform } = assertSupportedPlatform(process.platform, process.arch);
   const adapter = createPlatformAdapter(
     process.platform,
     process.arch,
     overrides.env,
   );
   const paths = overrides.paths ?? adapter.resolvePaths(overrides.env ?? process.env);
+
+  if (command.name === "launch-next") {
+    try {
+      return await launchNextCommand(paths, (message) => {
+        process.stderr.write(message);
+      });
+    } catch (error) {
+      process.stderr.write(
+        `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      return 1;
+    }
+  }
+
   const output = overrides.output ?? createCliOutput();
   const installation = resolveRuntimeInstallation({ moduleUrl: import.meta.url });
 

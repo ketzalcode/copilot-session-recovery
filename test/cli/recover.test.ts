@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { parseCliArguments } from "../../src/cli/arguments.ts";
 import { formatDryRunCommand, formatSessionTable } from "../../src/cli/format.ts";
 import { recoverSessionsCommand } from "../../src/cli/commands.ts";
 import { main } from "../../src/cli/main.ts";
 import { defaultConfig, saveConfig } from "../../src/config/config.ts";
+import { LAUNCH_NEXT_COMMAND } from "../../src/launch/macos-terminal.ts";
 import type { TerminalLauncher } from "../../src/launch/terminal.ts";
 import { buildWindowsTerminalArgs } from "../../src/launch/windows-terminal.ts";
 import type { ProcessResult, ProcessRunner, ProcessSpec } from "../../src/launch/process-runner.ts";
@@ -57,6 +59,17 @@ interface RecoverDependencyOverrides {
 
 const primarySessionId = "502ed8ca-ce22-4e92-b6a7-34eaec25c59d";
 const skippedSessionId = "95d2d9b1-0e6a-48c1-afd6-8a7598128f43";
+const runtimeRoot = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "fixtures",
+  "runtime",
+  "recover",
+);
+
+function runtimePath(name: string): string {
+  return path.join(runtimeRoot, `${process.pid}-${randomUUID()}-${name}`);
+}
 
 function createOutputCapture(
   confirm: (message: string) => Promise<boolean>,
@@ -129,11 +142,11 @@ async function createRecoverTestDependencies(
   t: test.TestContext,
   overrides: RecoverDependencyOverrides = {},
 ): Promise<RecoverTestDependencies> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "copilot-session-recovery-"));
+  const root = runtimePath("state");
+  await rm(root, { recursive: true, force: true });
+  await mkdir(root, { recursive: true });
   t.after(async () => {
-    await import("node:fs/promises").then(({ rm }) =>
-      rm(root, { recursive: true, force: true }),
-    );
+    await rm(root, { recursive: true, force: true });
   });
 
   const paths: AppPaths = {
@@ -222,6 +235,19 @@ async function createRecoverTestDependencies(
     return JSON.parse(await readFile(paths.registryFile, "utf8")) as SessionRegistry;
     },
   };
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 async function expectRegistryUnchanged(
@@ -378,30 +404,103 @@ test("unavailable terminal leaves the registry unchanged and returns one", async
   assert.match(deps.outputCapture.errorText(), /Test Terminal is unavailable\./);
 });
 
-test("macOS recovery fails before preview when the adapter reports it unavailable", async (t) => {
-  const macosTerminal = createMacosPlatformAdapter().terminal;
+test("macOS recovery keeps the launch plan and surfaces Automation denial guidance", async (t) => {
+  const processCalls: Array<{ executable: string; args: string[] }> = [];
+  let launchPlanWritten = false;
+  let launchPlanFile = "";
+  const macosTerminal = createMacosPlatformAdapter({
+    commandExists: async (executable, platform) =>
+      executable === "/usr/bin/osascript" && platform === "darwin",
+    runProcess: async (spec) => {
+      processCalls.push({
+        executable: spec.executable,
+        args: spec.args,
+      });
+      if (spec.executable === "/usr/bin/osascript") {
+        launchPlanWritten = await pathExists(launchPlanFile);
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr:
+            "execution error: Not authorized to send Apple events to Terminal. (-1743)\n",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    },
+  }).terminal;
   const deps = await createRecoverTestDependencies(t, {
     terminal: {
       name: macosTerminal.name,
       command: macosTerminal.command,
       available: macosTerminal.available,
       preview: macosTerminal.preview,
-      launch: macosTerminal.launch,
       ...(macosTerminal.unavailableMessage === undefined
         ? {}
         : { unavailableMessage: macosTerminal.unavailableMessage }),
     },
+    launch: macosTerminal.launch,
+  });
+  launchPlanFile = deps.paths.launchPlanFile;
+
+  assert.equal(
+    await expectRegistryUnchanged(deps.paths.registryFile, () =>
+      recoverSessionsCommand({ dryRun: false, yes: true }, deps),
+    ),
+    1,
+  );
+  assert.equal(deps.terminalCalls.length, 1);
+  assert.equal(deps.outputCapture.prompts.length, 0);
+  assert.equal(launchPlanWritten, true);
+  assert.equal(await pathExists(deps.paths.launchPlanFile), true);
+  assert.match(
+    deps.outputCapture.errorText(),
+    /System Settings > Privacy & Security > Automation/,
+  );
+  assert.equal(processCalls.length, 2);
+  assert.deepEqual(processCalls[0], {
+    executable: "/usr/bin/open",
+    args: ["-Ra", "Terminal"],
+  });
+  assert.equal(processCalls[1]?.executable, "/usr/bin/osascript");
+  assert.equal(processCalls[1]?.args[0], "-e");
+  assert.equal(processCalls[1]?.args[2], "1");
+});
+
+test("macOS dry run prints the broker command and count without creating a launch plan", async (t) => {
+  const macosTerminal = createMacosPlatformAdapter({
+    commandExists: async (executable, platform) =>
+      executable === "/usr/bin/osascript" && platform === "darwin",
+    runProcess: async () => ({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    }),
+  }).terminal;
+  const deps = await createRecoverTestDependencies(t, {
+    terminal: {
+      name: macosTerminal.name,
+      command: macosTerminal.command,
+      available: macosTerminal.available,
+      preview: macosTerminal.preview,
+    },
+    launch: macosTerminal.launch,
   });
 
   assert.equal(
     await expectRegistryUnchanged(deps.paths.registryFile, () =>
       recoverSessionsCommand({ dryRun: true, yes: false }, deps),
     ),
-    1,
+    0,
   );
   assert.equal(deps.terminalCalls.length, 0);
   assert.equal(deps.outputCapture.prompts.length, 0);
-  assert.match(deps.outputCapture.errorText(), /not available on macOS yet/i);
+  assert.equal(await pathExists(deps.paths.launchPlanFile), false);
+  assert.match(deps.outputCapture.text(), /Apple Terminal tab count: 1/);
+  assert.match(deps.outputCapture.text(), new RegExp(LAUNCH_NEXT_COMMAND));
 });
 
 test("confirmation persists profile overrides before launching once", async (t) => {
