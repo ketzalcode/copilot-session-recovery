@@ -63,7 +63,11 @@ test("release workflow verifies both platforms before trusted npm publish", asyn
   assert.doesNotMatch(workflow, /pull_request:|workflow_dispatch:|release:/u);
   assert.match(
     workflow,
-    /permissions:\s*\r?\n\s*contents:\s*read\s*\r?\n\s*id-token:\s*write\s*\r?\n/u,
+    /permissions:\s*\r?\n\s*contents:\s*read\s*\r?\n\r?\njobs:/u,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /permissions:\s*\r?\n\s*contents:\s*read\s*\r?\n\s*id-token:\s*write\s*\r?\n\r?\njobs:/u,
   );
   assert.doesNotMatch(workflow, /contents:\s*write|attestations:|NPM_TOKEN/u);
   assert.match(
@@ -76,7 +80,7 @@ test("release workflow verifies both platforms before trusted npm publish", asyn
   );
   assert.match(
     workflow,
-    /publish:[\s\S]*?needs:\s*\[\s*verify-windows,\s*verify-macos\s*\][\s\S]*?runs-on:\s*windows-latest/u,
+    /publish:[\s\S]*?needs:\s*\[\s*verify-windows,\s*verify-macos\s*\][\s\S]*?runs-on:\s*windows-latest[\s\S]*?permissions:\s*\r?\n\s*contents:\s*read\s*\r?\n\s*id-token:\s*write/u,
   );
   assert.match(
     workflow,
