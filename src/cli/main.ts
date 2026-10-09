@@ -32,6 +32,8 @@ import {
   runProcess,
   type ProcessRunner,
 } from "../launch/process-runner.ts";
+import type { TerminalLauncher } from "../launch/terminal.ts";
+import { createWindowsTerminalLauncher } from "../launch/windows-terminal.ts";
 import {
   handleSessionEndHook,
   handleSessionStartHook,
@@ -79,6 +81,32 @@ interface MainOverrides {
   installerDependencies?: InstallerDependencies;
   diagnosticDependencies?: DiagnosticDependencies;
   currentDirectory?: () => string;
+  terminal?: TerminalLauncher;
+}
+
+function recoverTerminal(
+  adapter: ReturnType<typeof createPlatformAdapter>,
+  overrides: MainOverrides,
+): TerminalLauncher {
+  if (overrides.terminal !== undefined) {
+    return overrides.terminal;
+  }
+
+  if (
+    adapter.id === "windows" &&
+    (overrides.commandExists !== undefined || overrides.runProcess !== undefined)
+  ) {
+    return createWindowsTerminalLauncher({
+      ...(overrides.commandExists === undefined
+        ? {}
+        : { commandExists: overrides.commandExists }),
+      ...(overrides.runProcess === undefined
+        ? {}
+        : { runProcess: overrides.runProcess }),
+    });
+  }
+
+  return adapter.terminal;
 }
 
 function hookDependencies(overrides: MainOverrides): HookDependencies {
@@ -189,8 +217,8 @@ export async function main(
     const deps = createRecoverDependencies(
       paths,
       output,
+      recoverTerminal(adapter, overrides),
       overrides.directoryExists ?? defaultDirectoryExists,
-      overrides.runProcess ?? runProcess,
     );
 
     if (overrides.commandExists) {

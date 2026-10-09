@@ -1,6 +1,7 @@
 import { createMacosPlatformAdapter } from "./macos.ts";
 import { createWindowsPlatformAdapter } from "./windows.ts";
 
+import type { TerminalLauncher } from "../launch/terminal.ts";
 import type { AppPaths } from "../storage/paths.ts";
 
 export type SupportedPlatform =
@@ -9,11 +10,10 @@ export type SupportedPlatform =
 
 export interface PlatformAdapter {
   readonly id: "windows" | "macos";
-  readonly terminalName: "Windows Terminal" | "Apple Terminal";
+  readonly terminal: TerminalLauncher;
   resolvePaths(env: NodeJS.ProcessEnv): AppPaths;
   protectState(paths: AppPaths): Promise<ProtectionResult>;
   checkStateProtection(paths: AppPaths): Promise<ProtectionResult>;
-  terminalAvailable(): Promise<boolean>;
 }
 
 export interface ProtectionResult {

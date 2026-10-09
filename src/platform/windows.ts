@@ -6,6 +6,7 @@ import {
   protectStateDirectory,
   type AclResult,
 } from "./windows-permissions.ts";
+import { createWindowsTerminalLauncher } from "../launch/windows-terminal.ts";
 import { commandExists } from "../launch/process-runner.ts";
 import type { AppPaths } from "../storage/paths.ts";
 
@@ -74,13 +75,15 @@ export function createWindowsPlatformAdapter(
   const checkStateProtection =
     dependencies.checkStateProtection ??
     ((paths: AppPaths) => checkStateDirectoryProtection(paths.appDir));
+  const terminal = createWindowsTerminalLauncher({
+    commandExists: lookupCommand,
+  });
 
   return {
     id: "windows",
-    terminalName: "Windows Terminal",
+    terminal,
     resolvePaths: resolveWindowsPaths,
     protectState,
     checkStateProtection,
-    terminalAvailable: () => lookupCommand("wt.exe", "win32"),
   };
 }

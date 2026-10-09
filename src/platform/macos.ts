@@ -10,7 +10,9 @@ import {
   commandExists,
   runProcess,
   type ProcessRunner,
+  type ProcessResult,
 } from "../launch/process-runner.ts";
+import type { TerminalLauncher } from "../launch/terminal.ts";
 import type { AppPaths } from "../storage/paths.ts";
 
 function resolveCopilotHome(env: NodeJS.ProcessEnv): string {
@@ -75,14 +77,13 @@ export function createMacosPlatformAdapter(
   const protectState = dependencies.protectState ?? protectMacState;
   const checkStateProtection =
     dependencies.checkStateProtection ?? checkMacStateProtection;
-
-  return {
-    id: "macos",
-    terminalName: "Apple Terminal",
-    resolvePaths: resolveMacosPaths,
-    protectState,
-    checkStateProtection,
-    async terminalAvailable() {
+  const unsupportedRecovery = async (): Promise<ProcessResult> => {
+    throw new Error("Apple Terminal recovery is not implemented yet.");
+  };
+  const terminal: TerminalLauncher = {
+    name: "Apple Terminal",
+    command: "/usr/bin/osascript",
+    async available() {
       if (!(await lookupCommand("/usr/bin/osascript", "darwin"))) {
         return false;
       }
@@ -94,5 +95,17 @@ export function createMacosPlatformAdapter(
 
       return result?.exitCode === 0;
     },
+    preview() {
+      throw new Error("Apple Terminal recovery is not implemented yet.");
+    },
+    launch: unsupportedRecovery,
+  };
+
+  return {
+    id: "macos",
+    terminal,
+    resolvePaths: resolveMacosPaths,
+    protectState,
+    checkStateProtection,
   };
 }

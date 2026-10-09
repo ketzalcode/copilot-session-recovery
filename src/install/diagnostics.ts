@@ -274,14 +274,14 @@ async function stateProtectionCheck(
 async function terminalCheck(
   deps: DiagnosticDependencies,
 ): Promise<DiagnosticCheck> {
-  if (await deps.platform.terminalAvailable()) {
-    return ok("terminal", `${deps.platform.terminalName} is available.`);
+  if (await deps.platform.terminal.available()) {
+    return ok("terminal", `${deps.platform.terminal.name} is available.`);
   }
 
   return error(
     "terminal",
-    `${deps.platform.terminalName} is unavailable.`,
-    `${deps.platform.terminalName} could not be confirmed on this installation.`,
+    `${deps.platform.terminal.name} is unavailable.`,
+    `${deps.platform.terminal.name} could not be confirmed on this installation.`,
     "Repair the terminal integration for this platform.",
   );
 }

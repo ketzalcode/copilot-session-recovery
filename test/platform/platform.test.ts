@@ -31,7 +31,7 @@ test("creates a Windows adapter with the expected contract", () => {
   const adapter = createPlatformAdapter("win32", "x64");
 
   assert.equal(adapter.id, "windows");
-  assert.equal(adapter.terminalName, "Windows Terminal");
+  assert.equal(adapter.terminal.name, "Windows Terminal");
   assert.equal(
     adapter.resolvePaths({
       LOCALAPPDATA: "C:\\Users\\ruben\\AppData\\Local",
@@ -45,7 +45,7 @@ test("creates a macOS adapter with the expected contract", () => {
   const adapter = createPlatformAdapter("darwin", "x64");
 
   assert.equal(adapter.id, "macos");
-  assert.equal(adapter.terminalName, "Apple Terminal");
+  assert.equal(adapter.terminal.name, "Apple Terminal");
   assert.equal(
     adapter.resolvePaths({
       HOME: "/Users/ruben",
@@ -83,7 +83,7 @@ test("Windows adapter exposes state protection and terminal checks", async () =>
     protected: true,
     detail: "checked",
   });
-  assert.equal(await adapter.terminalAvailable(), true);
+  assert.equal(await adapter.terminal.available(), true);
   assert.deepEqual(commandChecks, [
     {
       executable: "wt.exe",
@@ -132,7 +132,7 @@ test("macOS adapter checks Apple Terminal with structured probes", async () => {
     protected: true,
     detail: "checked",
   });
-  assert.equal(await adapter.terminalAvailable(), true);
+  assert.equal(await adapter.terminal.available(), true);
   assert.deepEqual(commandChecks, [
     {
       executable: "/usr/bin/osascript",

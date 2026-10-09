@@ -2,10 +2,9 @@ import { loadConfig, parseConfig, saveConfig } from "../config/config.ts";
 import {
   commandExists as defaultCommandExists,
   type ProcessSpec,
-  type ProcessRunner,
 } from "../launch/process-runner.ts";
+import type { TerminalLauncher } from "../launch/terminal.ts";
 import { buildRecoveryPlan } from "../launch/recovery-plan.ts";
-import { buildWindowsTerminalArgs, launchWindowsTerminal } from "../launch/windows-terminal.ts";
 import { applyLifecycleEvent } from "../session/lifecycle.ts";
 import { isSessionId } from "../session/ids.ts";
 import type { SessionRegistry } from "../session/model.ts";
@@ -17,7 +16,7 @@ import {
   updateRegistry,
 } from "../storage/registry.ts";
 import type { CliOutput } from "./io.ts";
-import { formatDryRunCommand, formatSessionTable } from "./format.ts";
+import { formatSessionTable } from "./format.ts";
 export {
   doctorCommand,
   repairRegistryCommand,
@@ -43,9 +42,9 @@ export interface AddSessionOptions {
 export interface RecoverDependencies {
   paths: AppPaths;
   output: CliOutput;
+  terminal: TerminalLauncher;
   directoryExists(cwd: string): Promise<boolean>;
   commandExists(executable: string): Promise<boolean>;
-  runProcess: ProcessRunner;
 }
 
 export interface ManagementDependencies {
@@ -129,8 +128,8 @@ export async function recoverSessionsCommand(
       deps.paths.corruptDir,
     );
 
-    if (!(await deps.commandExists("wt.exe"))) {
-      deps.output.error("Windows Terminal (wt.exe) was not found.");
+    if (!(await deps.terminal.available())) {
+      deps.output.error(`${deps.terminal.name} was not found.`);
       return 1;
     }
 
@@ -152,31 +151,28 @@ export async function recoverSessionsCommand(
     deps.output.out(formatSessionTable(plan.tabs, plan.skipped));
 
     if (options.dryRun) {
-      deps.output.out(
-        `Dry run command:\n${formatDryRunCommand(
-          "wt.exe",
-          buildWindowsTerminalArgs(plan.tabs),
-        )}`,
-      );
+      deps.output.out(`Dry run command:\n${deps.terminal.preview(plan.tabs, deps.paths)}`);
       return 0;
     }
 
     if (
       !options.yes &&
-      !(await deps.output.confirm("Launch recoverable sessions in Windows Terminal?"))
+      !(await deps.output.confirm(
+        `Launch recoverable sessions in ${deps.terminal.name}?`,
+      ))
     ) {
       deps.output.out("Recovery cancelled.");
       return 0;
     }
 
     await persistProfileUpdates(deps.paths, plan.profileUpdates);
-    const result = await launchWindowsTerminal(plan.tabs, deps.runProcess);
+    const result = await deps.terminal.launch(plan.tabs, deps.paths);
 
     if (result.exitCode !== 0) {
       deps.output.error(
         result.stderr.trim().length > 0
           ? result.stderr.trimEnd()
-          : `Windows Terminal exited with code ${result.exitCode}.`,
+          : `${deps.terminal.name} exited with code ${result.exitCode}.`,
       );
       return 1;
     }
@@ -191,15 +187,15 @@ export async function recoverSessionsCommand(
 export function createRecoverDependencies(
   paths: AppPaths,
   output: CliOutput,
+  terminal: TerminalLauncher,
   directoryExists: RecoverDependencies["directoryExists"],
-  runProcess: ProcessRunner,
 ): RecoverDependencies {
   return {
     paths,
     output,
+    terminal,
     directoryExists,
     commandExists: defaultCommandExists,
-    runProcess,
   };
 }
 

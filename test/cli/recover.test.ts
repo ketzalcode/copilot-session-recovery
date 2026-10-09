@@ -9,6 +9,7 @@ import { formatDryRunCommand, formatSessionTable } from "../../src/cli/format.ts
 import { recoverSessionsCommand } from "../../src/cli/commands.ts";
 import { main } from "../../src/cli/main.ts";
 import { defaultConfig, saveConfig } from "../../src/config/config.ts";
+import type { TerminalLauncher } from "../../src/launch/terminal.ts";
 import { buildWindowsTerminalArgs } from "../../src/launch/windows-terminal.ts";
 import type { ProcessResult, ProcessRunner, ProcessSpec } from "../../src/launch/process-runner.ts";
 import type { RecoveryTab, SkippedSession } from "../../src/launch/recovery-plan.ts";
@@ -30,10 +31,13 @@ interface OutputCapture {
 interface RecoverTestDependencies {
   paths: AppPaths;
   output: OutputCapture["output"];
+  terminal: TerminalLauncher;
   directoryExists(cwd: string): Promise<boolean>;
   commandExists(executable: string): Promise<boolean>;
-  runProcess: ProcessRunner;
-  processCalls: ProcessSpec[];
+  terminalCalls: Array<{
+    tabs: readonly RecoveryTab[];
+    paths: AppPaths;
+  }>;
   registryWrites: string[];
   outputCapture: OutputCapture;
   readRegistry(): Promise<SessionRegistry>;
@@ -42,7 +46,11 @@ interface RecoverTestDependencies {
 interface RecoverDependencyOverrides {
   confirm?: (message: string) => Promise<boolean>;
   commandExists?: (executable: string) => Promise<boolean>;
-  runProcess?: ProcessRunner;
+  terminal?: Partial<TerminalLauncher>;
+  launch?: (
+    tabs: readonly RecoveryTab[],
+    paths: AppPaths,
+  ) => Promise<ProcessResult>;
   registry?: SessionRegistry;
 }
 
@@ -168,35 +176,43 @@ async function createRecoverTestDependencies(
   await atomicWriteJson(paths.registryFile, registry);
 
   let lastRegistryState = await readFile(paths.registryFile, "utf8");
-  const processCalls: ProcessSpec[] = [];
+  const terminalCalls: Array<{
+    tabs: readonly RecoveryTab[];
+    paths: AppPaths;
+  }> = [];
   const registryWrites: string[] = [];
   const confirm = overrides.confirm ?? (async () => true);
   const outputCapture = createOutputCapture(confirm);
-  const baseProcessRunner =
-    overrides.runProcess ??
+  const baseLaunch =
+    overrides.launch ??
     (async () => ({ exitCode: 0, stdout: "", stderr: "" } satisfies ProcessResult));
-
-  const runProcess: ProcessRunner = async (spec) => {
-    processCalls.push(spec);
+  const terminal: TerminalLauncher = {
+    name: overrides.terminal?.name ?? "Test Terminal",
+    command: overrides.terminal?.command ?? "test-terminal",
+    available: overrides.terminal?.available ?? (async () => true),
+    preview: overrides.terminal?.preview ?? (() => "test-terminal preview"),
+    launch: async (tabs, launchPaths) => {
+    terminalCalls.push({ tabs, paths: launchPaths });
     const currentRegistryState = await readFile(paths.registryFile, "utf8");
     if (currentRegistryState !== lastRegistryState) {
       registryWrites.push(currentRegistryState);
       lastRegistryState = currentRegistryState;
     }
-    return baseProcessRunner(spec);
+    return baseLaunch(tabs, launchPaths);
+    },
   };
 
   return {
     paths,
     output: outputCapture.output,
+    terminal,
     directoryExists: async (cwd) => cwd !== "C:\\missing",
     commandExists: overrides.commandExists ?? (async () => true),
-    runProcess,
-    processCalls,
+    terminalCalls,
     registryWrites,
     outputCapture,
     async readRegistry() {
-      return JSON.parse(await readFile(paths.registryFile, "utf8")) as SessionRegistry;
+    return JSON.parse(await readFile(paths.registryFile, "utf8")) as SessionRegistry;
     },
   };
 }
@@ -291,13 +307,13 @@ test("dry run prints the plan and never starts wt.exe", async (t) => {
   );
 
   assert.equal(result, 0);
-  assert.equal(deps.processCalls.length, 0);
+  assert.equal(deps.terminalCalls.length, 0);
   assert.match(deps.outputCapture.text(), /Recoverable sessions:/);
   assert.match(deps.outputCapture.text(), /Skipped sessions:/);
   assert.match(deps.outputCapture.text(), /ms-pal/);
   assert.match(
     deps.outputCapture.text(),
-    /wt\.exe -w new new-tab --title "ms-pal - 502ed8c"/,
+    /Dry run command:\ntest-terminal preview/,
   );
 });
 
@@ -312,7 +328,7 @@ test("an empty registry prints no recoverable sessions and exits zero", async (t
     ),
     0,
   );
-  assert.equal(deps.processCalls.length, 0);
+  assert.equal(deps.terminalCalls.length, 0);
   assert.equal(deps.outputCapture.prompts.length, 0);
   assert.match(deps.outputCapture.text(), /No recoverable sessions\./);
 });
@@ -328,14 +344,20 @@ test("a declined confirmation does not mutate profiles or launch", async (t) => 
     ),
     0,
   );
-  assert.equal(deps.processCalls.length, 0);
+  assert.equal(deps.terminalCalls.length, 0);
   assert.equal(deps.outputCapture.prompts.length, 1);
+  assert.match(
+    deps.outputCapture.prompts[0] ?? "",
+    /Launch recoverable sessions in Test Terminal\?/,
+  );
   assert.match(deps.outputCapture.text(), /Recovery cancelled\./);
 });
 
-test("missing wt.exe leaves the registry unchanged and returns one", async (t) => {
+test("missing terminal leaves the registry unchanged and returns one", async (t) => {
   const deps = await createRecoverTestDependencies(t, {
-    commandExists: async (executable) => executable !== "wt.exe",
+    terminal: {
+      available: async () => false,
+    },
   });
 
   assert.equal(
@@ -344,9 +366,9 @@ test("missing wt.exe leaves the registry unchanged and returns one", async (t) =
     ),
     1,
   );
-  assert.equal(deps.processCalls.length, 0);
+  assert.equal(deps.terminalCalls.length, 0);
   assert.equal(deps.outputCapture.text(), "");
-  assert.match(deps.outputCapture.errorText(), /wt\.exe/);
+  assert.match(deps.outputCapture.errorText(), /Test Terminal was not found\./);
 });
 
 test("confirmation persists profile overrides before launching once", async (t) => {
@@ -362,20 +384,7 @@ test("confirmation persists profile overrides before launching once", async (t) 
     0,
   );
   assert.equal(deps.registryWrites.length, 1);
-  assert.equal(deps.processCalls.length, 1);
-  assert.equal(deps.processCalls[0]?.executable, "wt.exe");
-  assert.deepEqual(deps.processCalls[0]?.args, [
-    "-w",
-    "new",
-    "new-tab",
-    "--title",
-    "ms-pal - 502ed8c",
-    "--startingDirectory",
-    "C:\\src\\ms-pal",
-    "agency",
-    "copilot",
-    `--resume=${primarySessionId}`,
-  ]);
+  assert.equal(deps.terminalCalls.length, 1);
 
   const persisted = await deps.readRegistry();
   assert.equal(
@@ -388,9 +397,9 @@ test("confirmation persists profile overrides before launching once", async (t) 
   );
 });
 
-test("nonzero Windows Terminal exits return one and print stderr", async (t) => {
+test("nonzero terminal exits return one and print stderr", async (t) => {
   const deps = await createRecoverTestDependencies(t, {
-    runProcess: async () => ({
+    launch: async () => ({
       exitCode: 1,
       stdout: "",
       stderr: "launch failed\r\n",
@@ -401,7 +410,7 @@ test("nonzero Windows Terminal exits return one and print stderr", async (t) => 
     await recoverSessionsCommand({ dryRun: false, yes: true }, deps),
     1,
   );
-  assert.equal(deps.processCalls.length, 1);
+  assert.equal(deps.terminalCalls.length, 1);
   assert.match(deps.outputCapture.errorText(), /^launch failed$/m);
 });
 
@@ -412,12 +421,12 @@ test("main wires recover-sessions through the recovery command", async (t) => {
     await main(["recover-sessions", "--dry-run"], {
       paths: deps.paths,
       output: deps.output,
+      terminal: deps.terminal,
       directoryExists: deps.directoryExists,
       commandExists: deps.commandExists,
-      runProcess: deps.runProcess,
     }),
     0,
   );
-  assert.equal(deps.processCalls.length, 0);
+  assert.equal(deps.terminalCalls.length, 0);
   assert.match(deps.outputCapture.text(), /Recoverable sessions:/);
 });

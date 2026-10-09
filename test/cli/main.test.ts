@@ -84,7 +84,19 @@ function createInstallerDependencies(): InstallerDependencies {
   };
   const platform: PlatformAdapter = {
     id: "windows",
-    terminalName: "Windows Terminal",
+    terminal: {
+      name: "Windows Terminal",
+      command: "wt.exe",
+      available: async () => true,
+      preview: () => "wt.exe",
+      async launch() {
+        return {
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+        };
+      },
+    },
     resolvePaths() {
       return paths;
     },
@@ -99,9 +111,6 @@ function createInstallerDependencies(): InstallerDependencies {
         protected: true,
         detail: "State directory is protected for the current user.",
       };
-    },
-    async terminalAvailable() {
-      return true;
     },
   };
 
