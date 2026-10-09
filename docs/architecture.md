@@ -9,9 +9,12 @@ Copilot Session Recovery uses official GitHub Copilot CLI lifecycle hooks to mai
 | Windows | x64 | Windows Terminal (`wt.exe`) | `%LOCALAPPDATA%\copilot-session-recovery` | `%USERPROFILE%\.copilot\hooks\copilot-session-recovery.json` |
 | macOS | x64, arm64 | Apple Terminal | `~/Library/Application Support/copilot-session-recovery` | `~/.copilot/hooks/copilot-session-recovery.json` |
 
-`COPILOT_HOME` overrides the default Copilot hook root on both platforms.
-`install` requires a persistent global npm installation and rejects `_npx`
-cache entrypoints because the owned hook file stores absolute runtime paths.
+`COPILOT_HOME` overrides the default Copilot hook root on both platforms. The
+documented persistent-hook setup is a global npm installation because the owned
+hook file stores absolute runtime paths and `install` rejects `_npx` cache
+entrypoints. Project-local absolute paths may technically launch, but they are
+unsupported because persistent hooks become fragile if that package path moves
+or is cleaned up.
 
 ## Data flow
 
@@ -25,6 +28,12 @@ cache entrypoints because the owned hook file stores absolute runtime paths.
 6. `copilot-session-recovery recover-sessions` reads the registry and config, validates the platform terminal and each launcher executable, skips records whose working directory is missing, shows a table, confirms once, and launches Windows Terminal or Apple Terminal with structured arguments.
 7. `copilot-session-recovery add` lets a user adopt a session that started before hook installation. It validates the full session UUID, working directory, and launcher profile, then applies the same locked `resume` lifecycle transition used by hooks.
 8. Successful terminal launch does not remove registry records. Later Copilot `session-start` and clean `session-end` hooks remain authoritative.
+
+The package manifest declares supported operating systems and Node.js 24+, but
+it does not declare a `cpu` field. Unsupported architectures are therefore
+rejected when commands run through `assertSupportedPlatform`, not necessarily
+during `npm install`. For example, Windows arm64 can install the package and
+then fail when an operational command starts.
 
 ## Components
 

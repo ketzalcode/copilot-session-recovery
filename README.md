@@ -19,8 +19,11 @@ npm install --global copilot-session-recovery
 copilot-session-recovery install
 ```
 
-`install` is a persistent machine setup step. It requires a stable global npm
-installation and rejects npm's transient `_npx` cache. Use `npx
+`install` is a persistent machine setup step. The supported setup is a stable
+global npm installation because `install` records absolute runtime paths and
+rejects npm's transient `_npx` cache. A project-local or other absolute package
+path may technically launch, but it is unsupported and can become unstable for
+persistent hooks if that path moves or is cleaned up. Use `npx
 copilot-session-recovery --help` or `npx copilot-session-recovery --version`
 for one-off inspection only.
 
@@ -99,8 +102,9 @@ The owned Copilot hook file stores absolute Node-plus-entry commands:
 - `"<absolute node path>" "<absolute package entry>" hook session-start`
 - `"<absolute node path>" "<absolute package entry>" hook session-end`
 
-That stable runtime contract is why persistent setup requires the global npm
-installation instead of `npx`.
+That stable runtime contract is why the documented persistent-hook setup is the
+global npm installation instead of `npx`. Other absolute package paths can
+appear to work, but they are outside the supported setup contract.
 
 ## Essential commands
 

@@ -13,15 +13,18 @@ Hooks fail open for Copilot. On validation or storage errors, the hook writes a 
 
 ## Persistent npm installation contract
 
-`install` requires a persistent global npm installation. The owned Copilot hook
-file records absolute paths to:
+The documented persistent-hook setup is a persistent global npm installation.
+The owned Copilot hook file records absolute paths to:
 
 - the current `process.execPath`; and
 - the bundled package entry file in the global installation.
 
 If the runtime entry file resolves under npm's transient `_npx` cache, `install`
 fails before mutating the filesystem. `npx` is intentionally limited to
-transient commands such as `--help` and `--version`.
+transient commands such as `--help` and `--version`. Other absolute package
+paths, including project-local installs, may technically launch but remain
+unsupported for persistent hooks because the recorded paths can stop working if
+that package location changes.
 
 ## No shell execution
 

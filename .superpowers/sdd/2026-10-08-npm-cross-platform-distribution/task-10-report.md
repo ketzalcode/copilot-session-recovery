@@ -36,3 +36,20 @@
   `docs/superpowers` and `.superpowers`.
 - The Apple Terminal manual release check remains operator work, not something
   CI or local automation can fully prove.
+
+## Round 1 fixes
+- Clarified across `README.md`, `CONTRIBUTING.md`, `AGENTS.md`,
+  `docs/architecture.md`, `docs/security.md`, and `docs/troubleshooting.md`
+  that the supported persistent-hook setup is the global npm install, while the
+  actual enforcement only rejects transient `_npx` cache entrypoints. The docs
+  now state that project-local absolute paths may technically launch but are
+  unsupported and unstable for persistent hooks.
+- Corrected the platform-troubleshooting guidance to match the package
+  manifest and runtime enforcement. The docs now explain that `os` and Node
+  version checks can fail at install time, but architecture support is enforced
+  when commands run because the package has no `cpu` field. Windows arm64 is
+  called out as a concrete install-succeeds/runtime-fails example.
+
+## Round 1 validation
+- `git --no-pager diff --check`
+- `rg -n "global npm|_npx|project-local|Unsupported platform: win32 arm64|cpu field|unsupported architecture" README.md CONTRIBUTING.md AGENTS.md docs`

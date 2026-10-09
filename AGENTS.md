@@ -5,8 +5,8 @@ This repository builds a V1 npm-distributed utility for recovering GitHub Copilo
 ## Development rules
 
 - Keep the approved V1 platform matrix limited to Windows x64 plus macOS x64/arm64 unless a newer design change expands it.
-- Keep distribution npm-only. The supported install contract is `npm install --global copilot-session-recovery` followed by `copilot-session-recovery install`.
-- Allow `npx copilot-session-recovery --help` and `--version` only as transient inspection. `install` must keep rejecting `_npx` runtime paths.
+- Keep distribution npm-only. The supported install contract is `npm install --global copilot-session-recovery` followed by `copilot-session-recovery install`. Other absolute package paths may technically launch, but they remain unsupported for persistent hooks.
+- Allow `npx copilot-session-recovery --help` and `--version` only as transient inspection. `install` must keep rejecting `_npx` runtime paths, not silently broaden support to transient caches.
 - Use test-driven development for source behavior changes. Watch the relevant test fail before implementation, then run it green.
 - Never read, parse, store, infer, or depend on private Copilot state, internal cache files, prompts, responses, tool output, credentials, tokens, or source content.
 - Do not add runtime npm dependencies without design approval. V1 must keep `"dependencies"` empty or absent.

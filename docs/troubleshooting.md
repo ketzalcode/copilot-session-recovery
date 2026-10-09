@@ -109,6 +109,11 @@ npm install --global copilot-session-recovery
 copilot-session-recovery install
 ```
 
+The supported persistent-hook setup is the global npm install above. A
+project-local or other absolute package path may technically launch because the
+runtime check specifically rejects `_npx`, but that setup is unsupported and
+can become unstable when the package directory moves or is cleaned up.
+
 ## Existing terminal does not find `copilot-session-recovery`
 
 Global npm installs expose `copilot-session-recovery` through your npm prefix. Already-open terminals keep their old environment. After:
@@ -135,7 +140,7 @@ copilot-session-recovery install
 copilot-session-recovery doctor
 ```
 
-## Global install fails or the package is unsupported
+## Install fails or commands report an unsupported platform
 
 The package requires Node.js 24 or newer and supports Windows x64 plus macOS x64 or arm64. Check:
 
@@ -144,7 +149,18 @@ node --version
 npm --version
 ```
 
-If npm reports an unsupported platform or architecture, move to a supported machine. If Node is older than 24, install the version from `.node-version` and retry the global install.
+`npm install` can reject unsupported operating systems because the package
+declares `os`, and Node or npm can reject older Node.js versions because the
+package declares `engines.node >=24`.
+
+The package does not declare a `cpu` field, so architecture support is enforced
+when `copilot-session-recovery` commands start. An unsupported architecture
+such as Windows arm64 can therefore install successfully and then fail at
+runtime with `Unsupported platform: win32 arm64.`
+
+If install or command startup reports an unsupported platform, move to a
+supported machine. If Node is older than 24, install the version from
+`.node-version` and retry the global install.
 
 ## macOS recovery reports Automation or Accessibility denial
 

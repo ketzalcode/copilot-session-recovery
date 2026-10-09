@@ -6,7 +6,9 @@
 - Node.js 24.21.0, matching `.node-version`
 - npm from the matching Node.js installation
 - Windows Terminal on Windows or Apple Terminal on macOS for recovery behavior checks
-- A persistent npm installation for `install`; `_npx` entrypoints are intentionally rejected
+- The documented persistent-hook setup is a global npm installation; `_npx`
+  entrypoints are intentionally rejected, while project-local paths remain
+  unsupported even if they technically launch
 
 ## Setup
 
