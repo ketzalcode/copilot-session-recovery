@@ -1,7 +1,9 @@
 import {
+  chmod as defaultChmod,
   constants,
   lstat as defaultLstat,
   open as defaultOpen,
+  stat as defaultStat,
 } from "node:fs/promises";
 
 import type { AppPaths } from "../storage/paths.ts";
@@ -33,6 +35,8 @@ interface MacFileHandle {
 export interface MacPermissionDependencies {
   getuid(): number;
   lstat(filePath: string): Promise<LinkStats>;
+  stat(filePath: string): Promise<FileStats>;
+  chmod(filePath: string, mode: number): Promise<void>;
   open(filePath: string, flags: number): Promise<MacFileHandle>;
 }
 
@@ -52,6 +56,8 @@ function defaultDependencies(): MacPermissionDependencies {
       return uid;
     },
     lstat: defaultLstat,
+    stat: defaultStat,
+    chmod: defaultChmod,
     open: defaultOpen,
   };
 }
@@ -68,6 +74,10 @@ function isErrnoException(
   code: string,
 ): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === code;
+}
+
+function isPermissionError(error: unknown): error is NodeJS.ErrnoException {
+  return isErrnoException(error, "EACCES") || isErrnoException(error, "EPERM");
 }
 
 function protectedPaths(paths: AppPaths): ProtectedPath[] {
@@ -99,10 +109,15 @@ interface OpenedPath {
   details: FileStats;
 }
 
+interface AccessDeniedPath {
+  accessDenied: true;
+  linkDetails: LinkStats;
+}
+
 async function inspectPath(
   filePath: string,
   deps: MacPermissionDependencies,
-): Promise<OpenedPath | ProtectionResult | undefined> {
+): Promise<OpenedPath | AccessDeniedPath | ProtectionResult | undefined> {
   try {
     const linkDetails = await deps.lstat(filePath);
     if (linkDetails.isSymbolicLink()) {
@@ -119,6 +134,13 @@ async function inspectPath(
 
       if (isErrnoException(error, "ELOOP")) {
         return failure(`${filePath} is a symbolic link.`);
+      }
+
+      if (isPermissionError(error)) {
+        return {
+          accessDenied: true,
+          linkDetails,
+        };
       }
 
       return failure(
@@ -150,6 +172,44 @@ async function inspectPath(
   } catch (error) {
     if (isErrnoException(error, "ENOENT")) {
       return undefined;
+    }
+
+    return failure(
+      `${filePath} could not be inspected: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+interface InspectedPath {
+  linkDetails: LinkStats;
+  details: FileStats;
+}
+
+async function inspectPathByName(
+  filePath: string,
+  deps: MacPermissionDependencies,
+  existingLinkDetails?: LinkStats,
+): Promise<InspectedPath | ProtectionResult | undefined> {
+  try {
+    const linkDetails = existingLinkDetails ?? await deps.lstat(filePath);
+    if (linkDetails.isSymbolicLink()) {
+      return failure(`${filePath} is a symbolic link.`);
+    }
+
+    const details = await deps.stat(filePath);
+    if (!sameIdentity(linkDetails, details)) {
+      return pathChanged(filePath);
+    }
+
+    return {
+      linkDetails,
+      details,
+    };
+  } catch (error) {
+    if (isErrnoException(error, "ENOENT")) {
+      return existingLinkDetails ? pathChanged(filePath) : undefined;
     }
 
     return failure(
@@ -202,6 +262,74 @@ async function verifyOwnershipAndMode(
 
   if ("protected" in opened) {
     return opened;
+  }
+
+  if ("accessDenied" in opened) {
+    const inspected = await inspectPathByName(filePath, deps, opened.linkDetails);
+    if (inspected === undefined) {
+      return undefined;
+    }
+
+    if ("protected" in inspected) {
+      return inspected;
+    }
+
+    if (inspected.details.uid !== deps.getuid()) {
+      return failure(
+        `${filePath} is not owned by the current user.`,
+      );
+    }
+
+    if (action === "check") {
+      if ((inspected.details.mode & 0o777) !== expectedMode) {
+        return failure(
+          `${filePath} permissions are ${formatMode(inspected.details.mode)} instead of ${formatMode(expectedMode)}.`,
+        );
+      }
+
+      return await ensurePathUnchanged(filePath, inspected.details, deps);
+    }
+
+    try {
+      await deps.chmod(filePath, expectedMode);
+    } catch (error) {
+      if (isErrnoException(error, "ENOENT")) {
+        return pathChanged(filePath);
+      }
+
+      return failure(
+        `${filePath} permissions could not be updated: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const reopened = await inspectPath(filePath, deps);
+    if (reopened === undefined) {
+      return pathChanged(filePath);
+    }
+
+    if ("protected" in reopened) {
+      return reopened;
+    }
+
+    if ("accessDenied" in reopened) {
+      return failure(
+        `${filePath} could not be reopened securely after chmod.`,
+      );
+    }
+
+    if (!sameIdentity(inspected.details, reopened.details)) {
+      return pathChanged(filePath);
+    }
+
+    if ((reopened.details.mode & 0o777) !== expectedMode) {
+      return failure(
+        `${filePath} permissions remain ${formatMode(reopened.details.mode)} instead of ${formatMode(expectedMode)}.`,
+      );
+    }
+
+    return await ensurePathUnchanged(filePath, reopened.details, deps);
   }
 
   const { handle } = opened;

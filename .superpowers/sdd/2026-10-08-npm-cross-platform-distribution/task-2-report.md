@@ -76,3 +76,28 @@
 - The fix closes the original symlink/TOCTOU gap by binding chmod and stat verification to an already-open non-symlink handle.
 - Post-operation identity checks ensure a concurrent rename cannot swap in a different pathname target and still return `protected: true`.
 - Test coverage stays focused on the reported race and the pre-existing permission checks.
+## Round 2/5 fix
+
+### Exact fix
+- Kept the secure `O_RDONLY | O_NOFOLLOW` handle path for readable entries.
+- Added a narrow fallback for `EACCES`/`EPERM` during `protectMacState`: inspect the owned non-symlink path by name with `lstat` + `stat`, apply pathname `chmod`, then immediately reopen with `O_NOFOLLOW` and verify the same inode/device and final mode before returning success.
+- This restores repair for owned mode `000` files and directories without accepting swapped or symlinked replacements as protected.
+- Extended macOS permission tests with fallback coverage for owned unreadable paths and for replacement during the fallback window.
+
+### Commands
+1. `node --test --test-name-pattern "protectMacState repairs owned unreadable state paths with pathname chmod fallback and secure verification|protectMacState rejects unreadable paths replaced during pathname chmod fallback" test\platform\macos-permissions.test.ts`
+   - Result before fix: exit 1.
+   - Evidence: no fallback `chmod` occurred for unreadable owned paths, and unreadable replacements failed as `could not be opened securely: denied` instead of the expected path-change rejection.
+2. `node --test --test-name-pattern "protectMacState repairs owned unreadable state paths with pathname chmod fallback and secure verification|protectMacState rejects unreadable paths replaced during pathname chmod fallback" test\platform\macos-permissions.test.ts`
+   - Result after fix: exit 0.
+3. `node --test test\platform\macos-permissions.test.ts`
+   - Result: exit 0, 8/8 tests passed.
+4. `node --test --test-concurrency=1 --test-isolation=none test\launch\process-runner.test.ts test\platform\windows-permissions.test.ts test\platform\macos-permissions.test.ts test\platform\platform.test.ts`
+   - Result: exit 0, 19/19 tests passed.
+5. `npm run typecheck`
+   - Result: exit 0.
+
+### Self-review
+- The fallback is limited to permission-denied opens during protection; normal readable paths still use handle-only chmod and verification.
+- Success now requires post-chmod secure reopen plus inode/device equality, so fallback repairs do not report swapped targets as protected.
+- The current Node/macOS surface still cannot guarantee that a pathname-target race avoids mutating the replacement before detection, because Node does not expose `fchmodat`/`openat`-style primitives for unreadable entries.
