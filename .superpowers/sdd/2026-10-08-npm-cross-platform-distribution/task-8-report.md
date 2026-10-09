@@ -58,3 +58,11 @@
 ## Concerns
 - `.github/workflows/ci.yml` and `.github/workflows/release.yml` still reference the old executable artifacts. That migration is scoped to Task 9, so local verification is green but tagged release automation is intentionally not updated in this task.
 - Hosted verification still cannot prove live Apple Terminal tab creation or the macOS Automation permission prompt. The manual macOS boundary from the design remains.
+
+## Round 1/5 follow-up
+- Finding addressed: `scripts/smoke-package.mjs` previously let ambient `npm_config_ignore_scripts` skip `prepack`, and ambient `npm_config_pack_destination` changed where npm wrote the tarball while `filename` still resolved as a basename.
+- Fix: force deterministic pack behavior with `npm pack --json --ignore-scripts=false --pack-destination <known-temp-dir>`, resolve the tarball from that directory, assert it exists, and clean up the actual emitted tarball plus the known temporary directory.
+- Regression coverage: `test/build/build.test.ts` now runs the real smoke script with hostile ambient `npm_config_ignore_scripts=true` and `npm_config_pack_destination=<temp dir>`, after temporarily removing `dist`, and asserts the smoke script succeeds and leaves the hostile pack destination empty.
+- Verification:
+  1. `Set-Location C:\src\copilot-session-recovery\.worktrees\npm-cross-platform; node --test --test-concurrency=1 --test-isolation=none test/build/build.test.ts`
+     - Result: exit 0, 5/5 tests passed.

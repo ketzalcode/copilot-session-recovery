@@ -293,9 +293,18 @@ function assertHookCommand(command, expectedNodePath, expectedEntry, event) {
 
 let tarballPath;
 const prefix = await mkdtemp(path.join(process.cwd(), ".smoke-package-prefix-"));
+const packDestination = await mkdtemp(
+  path.join(process.cwd(), ".smoke-package-tarball-"),
+);
 
 try {
-  const packResult = await runNpm(["pack", "--json"]);
+  const packResult = await runNpm([
+    "pack",
+    "--json",
+    "--ignore-scripts=false",
+    "--pack-destination",
+    packDestination,
+  ]);
   assert.equal(packResult.code, 0, packResult.stderr);
 
   const [packSummary] = JSON.parse(packResult.stdout);
@@ -304,7 +313,11 @@ try {
   const packedFiles = packSummary?.files.map((entry) => entry.path).sort();
   assert.deepEqual(packedFiles, expectedPackFiles);
 
-  tarballPath = path.resolve(packSummary.filename);
+  tarballPath = path.resolve(
+    packDestination,
+    path.basename(packSummary.filename),
+  );
+  await access(tarballPath, constants.F_OK);
 
   const installEnv = await createInstallEnv(prefix);
   const npmEnv = createNpmEnv(prefix);
@@ -369,4 +382,5 @@ try {
   if (tarballPath !== undefined) {
     await rm(tarballPath, { force: true });
   }
+  await rm(packDestination, { recursive: true, force: true });
 }

@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access, readdir, readFile } from "node:fs/promises";
+import {
+  access,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+} from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -11,24 +18,36 @@ interface CommandResult {
   stderr: string;
 }
 
-function runNode(argv: readonly string[]): Promise<CommandResult> {
-  return runCommand(process.execPath, argv);
+interface SpawnOptions {
+  env?: NodeJS.ProcessEnv;
 }
 
-async function runNpm(argv: readonly string[]): Promise<CommandResult> {
+function runNode(
+  argv: readonly string[],
+  options: SpawnOptions = {},
+): Promise<CommandResult> {
+  return runCommand(process.execPath, argv, options);
+}
+
+async function runNpm(
+  argv: readonly string[],
+  options: SpawnOptions = {},
+): Promise<CommandResult> {
   const command = await resolveNpmCommand();
-  return runCommand(command.executable, [...command.args, ...argv]);
+  return runCommand(command.executable, [...command.args, ...argv], options);
 }
 
 function runCommand(
   command: string,
   argv: readonly string[],
+  options: SpawnOptions = {},
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, [...argv], {
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
+      ...options,
     });
     let stdout = "";
     let stderr = "";
@@ -189,4 +208,35 @@ test("npm pack dry-run includes only the publish whitelist and npm metadata", as
     "dist/copilot-session-recovery.mjs.map",
     "package.json",
   ]);
+});
+
+test("smoke package ignores hostile ambient npm pack config", async () => {
+  const distPath = path.resolve("dist");
+  const distBackupPath = path.resolve(".dist-smoke-package-backup");
+  const packDestination = await mkdtemp(
+    path.join(process.cwd(), ".pack-destination-"),
+  );
+
+  await rm(distBackupPath, { recursive: true, force: true });
+  await rename(distPath, distBackupPath);
+
+  try {
+    const result = await runNode(["scripts/smoke-package.mjs"], {
+      env: {
+        ...process.env,
+        npm_config_ignore_scripts: "true",
+        npm_config_pack_destination: packDestination,
+      },
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, "");
+
+    const packFiles = await readdir(packDestination);
+    assert.deepEqual(packFiles, []);
+  } finally {
+    await rm(distPath, { recursive: true, force: true });
+    await rename(distBackupPath, distPath);
+    await rm(packDestination, { recursive: true, force: true });
+  }
 });
