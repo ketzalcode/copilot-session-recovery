@@ -1,5 +1,6 @@
+import { realpathSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { parseCliArguments } from "./arguments.ts";
 import {
@@ -47,6 +48,18 @@ import {
 } from "../platform/platform.ts";
 import { resolveRuntimeInstallation } from "../runtime/installation.ts";
 import { resolveAppPaths, type AppPaths } from "../storage/paths.ts";
+
+export function isMainModule(
+  moduleUrl: string,
+  argvEntry: string | undefined,
+  resolveRealPath: (filePath: string) => string = realpathSync,
+): boolean {
+  if (argvEntry === undefined || argvEntry.length === 0) {
+    return false;
+  }
+
+  return resolveRealPath(fileURLToPath(moduleUrl)) === resolveRealPath(argvEntry);
+}
 
 const HELP_TEXT = [
   "Usage: copilot-session-recovery <command>",
@@ -312,7 +325,7 @@ export async function main(
     : handleSessionEndHook(inputText, deps);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   void main(process.argv.slice(2))
     .then((exitCode) => {
       process.exitCode = exitCode;

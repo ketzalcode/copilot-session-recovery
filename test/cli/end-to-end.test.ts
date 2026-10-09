@@ -306,11 +306,14 @@ test("source CLI preserves only recoverable sessions and launches Agency recover
   );
   assert.equal(result.code, 0);
   assert.match(result.stdout, /Dry run command:/);
-  assert.match(result.stdout, new RegExp(`agency copilot --resume=${sessionB}`));
-  assert.match(result.stdout, new RegExp(`agency copilot --resume=${sessionC}`));
   if (fixture.platform === "win32") {
+    assert.match(result.stdout, new RegExp(`agency copilot --resume=${sessionB}`));
+    assert.match(result.stdout, new RegExp(`agency copilot --resume=${sessionC}`));
     assert.equal(await fakeLogExists(fixture.fakeLogFile), false);
   } else {
+    assert.match(result.stdout, /Apple Terminal tab count: 2/);
+    assert.match(result.stdout, /copilot-session-recovery launch-next/);
+    assert.doesNotMatch(result.stdout, new RegExp(`${sessionB}|${sessionC}`));
     const dryRunInvocations = await readFakeLog(fixture.fakeLogFile);
     assert.deepEqual(dryRunInvocations.map((entry) => entry.executable), [
       "/usr/bin/open",

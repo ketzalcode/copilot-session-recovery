@@ -3,10 +3,10 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { parseCliArguments } from "../../src/cli/arguments.ts";
-import { main } from "../../src/cli/main.ts";
+import { isMainModule, main } from "../../src/cli/main.ts";
 import type { InstallerDependencies } from "../../src/install/installer.ts";
 import { createLaunchPlan, type LaunchPlan } from "../../src/launch/launch-plan.ts";
 import type { PlatformAdapter } from "../../src/platform/platform.ts";
@@ -71,6 +71,28 @@ interface CommandResult {
   stdout: string;
   stderr: string;
 }
+
+test("entrypoint detection resolves npm bin symlinks", () => {
+  const canonicalEntry = path.resolve(
+    "package",
+    "dist",
+    "copilot-session-recovery.mjs",
+  );
+  const npmBinEntry = path.resolve(
+    "prefix",
+    "bin",
+    "copilot-session-recovery",
+  );
+  assert.equal(
+    isMainModule(
+      pathToFileURL(canonicalEntry).href,
+      npmBinEntry,
+      (filePath) =>
+        filePath === npmBinEntry ? canonicalEntry : filePath,
+    ),
+    true,
+  );
+});
 
 function createInstallerDependencies(): InstallerDependencies {
   const installation: RuntimeInstallation = {
