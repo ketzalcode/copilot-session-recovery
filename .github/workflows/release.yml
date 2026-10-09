@@ -5,12 +5,11 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
-  attestations: write
 
 jobs:
-  release:
+  verify-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -20,16 +19,29 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
-      - uses: anchore/sbom-action@v0.24.3
+
+  verify-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
-          path: dist/copilot-session-recovery-windows-x64.exe
-          output-file: dist/copilot-session-recovery-windows-x64.spdx.json
-      - uses: actions/attest-build-provenance@v4.2.2
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
+  publish:
+    needs: [verify-windows, verify-macos]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
-          subject-path: dist/copilot-session-recovery-windows-x64.exe
-      - uses: softprops/action-gh-release@v3.0.3
-        with:
-          files: |
-            dist/copilot-session-recovery-windows-x64.exe
-            dist/copilot-session-recovery-windows-x64.exe.sha256
-            dist/copilot-session-recovery-windows-x64.spdx.json
+          node-version-file: .node-version
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run verify
+      - run: node scripts/check-release-version.mjs "$env:GITHUB_REF_NAME"
+      - run: npm publish
