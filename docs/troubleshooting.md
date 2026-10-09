@@ -84,28 +84,28 @@ If your organization disables or overrides user hooks, Copilot may not invoke `h
 
 ## Existing terminal does not find `copilot-session-recovery`
 
-Install updates the current user's PATH, but already-open terminals keep their old environment. Restart Windows Terminal after:
+Global npm installs expose `copilot-session-recovery` through your npm prefix. Already-open terminals keep their old environment. After:
 
 ```powershell
-.\copilot-session-recovery-windows-x64.exe install
+npm install --global copilot-session-recovery
 ```
 
-Until the terminal is restarted, run the installed executable by full path:
+open a new terminal so your npm global bin directory is reloaded. Then run:
 
 ```powershell
-& "$env:LOCALAPPDATA\copilot-session-recovery\bin\copilot-session-recovery.exe" status
+copilot-session-recovery install
 ```
 
-## Unsigned first release warning
+## Global install fails or the package is unsupported
 
-Early releases may be unsigned and can trigger Windows SmartScreen or enterprise application-control warnings. Verify the downloaded executable against the release checksum before deciding whether to run it:
+The package requires Node.js 24 or newer and supports Windows x64 plus macOS x64 or arm64. Check:
 
 ```powershell
-Get-FileHash .\copilot-session-recovery-windows-x64.exe -Algorithm SHA256
-Get-Content .\copilot-session-recovery-windows-x64.exe.sha256
+node --version
+npm --version
 ```
 
-The hash from `Get-FileHash` must match the first field in the `.sha256` file. If your organization requires signed binaries, do not bypass policy.
+If npm reports an unsupported platform or architecture, move to a supported machine. If Node is older than 24, install the version from `.node-version` and retry the global install.
 
 ## Recovery preview works but launch fails
 

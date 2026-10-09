@@ -25,7 +25,7 @@ Supported placeholders are `{sessionId}`, `{cwd}`, and `{sessionIdPrefix}`.
 
 ## User-only state protection
 
-State is stored under `%LOCALAPPDATA%\copilot-session-recovery`. Install applies best-effort current-user ACL protection with the current Windows SID and `icacls.exe`. `status` and `doctor` report whether the ACL check can verify current-user protection.
+State is stored under `%LOCALAPPDATA%\copilot-session-recovery` on Windows and `~/Library/Application Support/copilot-session-recovery` on macOS. Install applies best-effort current-user ACL protection with the current Windows SID and `icacls.exe`, and it enforces user-only `0700` / `0600` permissions on macOS. `status` and `doctor` report whether the platform check can verify current-user protection.
 
 ACL hardening is best effort. If it cannot be verified, the tool reports a warning instead of hiding the failure.
 
@@ -33,7 +33,7 @@ ACL hardening is best effort. If it cannot be verified, the tool reports a warni
 
 Registry mutations use an exclusive lock file, bounded retries, stale-lock handling, reread-under-lock, same-directory temporary files, file sync, and atomic rename.
 
-If `sessions.json` is corrupt, the original bytes are preserved under `%LOCALAPPDATA%\copilot-session-recovery\corrupt\` using a timestamp and SHA-256-addressed filename. The registry is reset only when the user explicitly runs:
+If `sessions.json` is corrupt, the original bytes are preserved under the platform `corrupt` directory using a timestamp and SHA-256-addressed filename. The registry is reset only when the user explicitly runs:
 
 ```powershell
 copilot-session-recovery doctor --repair-registry
@@ -45,16 +45,14 @@ V1 has no runtime network behavior and no telemetry. `npm run audit:runtime` fai
 
 ## Release integrity
 
-Release assets include:
+Local package verification:
 
-- `copilot-session-recovery-windows-x64.exe`
-- `copilot-session-recovery-windows-x64.exe.sha256`
-- `copilot-session-recovery-windows-x64.spdx.json`
-- GitHub build provenance attestation for the executable
+- inspects `npm pack --json` output for the exact publish whitelist;
+- smoke-installs the generated tarball into an isolated npm prefix;
+- exercises `--version`, `--help`, `install`, and `uninstall --purge`;
+- removes the generated tarball and temporary prefix afterward.
 
-Users can compare `Get-FileHash` output with the `.sha256` asset. The release workflow generates the SBOM and provenance in GitHub Actions after `npm run verify` passes.
-
-Local commands build and validate artifacts only. They do not publish GitHub Releases.
+The package manifest enables npm provenance for supported publish flows. Local commands build and validate artifacts only. They do not publish packages.
 
 ## Private Copilot state prohibition
 

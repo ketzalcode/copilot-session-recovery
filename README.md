@@ -1,31 +1,32 @@
 # Copilot Session Recovery
 
-Recover GitHub Copilot CLI sessions after an unexpected Windows restart.
+Recover GitHub Copilot CLI sessions after an unexpected restart.
 
 Copilot Session Recovery records the IDs of active sessions through official Copilot
 lifecycle hooks. When a machine restarts, one command reopens the recoverable
-sessions as Windows Terminal tabs in their original working directories.
+sessions in their original working directories.
 
-- **Platform:** Windows x64
+- **Platforms:** Windows x64, macOS x64, macOS arm64
 - **Launchers:** `copilot` and Microsoft `agency copilot`
+- **Runtime:** Node.js 24 or newer
 
 ## Quick start
 
-Download `copilot-session-recovery-windows-x64.exe` from the latest GitHub Release,
-then install it for the current Windows user:
+Install the global npm package, then run explicit setup:
 
 ```powershell
-.\copilot-session-recovery-windows-x64.exe install
+npm install --global copilot-session-recovery
+copilot-session-recovery install
 ```
 
 Microsoft employees using Agency can select that launcher during installation:
 
 ```powershell
-.\copilot-session-recovery-windows-x64.exe install --profile agency
+copilot-session-recovery install --profile agency
 ```
 
-Open a new terminal after installation so the updated user `PATH` is available.
-No Node.js installation or administrator access is required.
+If an existing terminal does not find `copilot-session-recovery` after the global
+install, open a new terminal so your npm global bin directory is reloaded.
 
 ## Recover after a restart
 
@@ -35,7 +36,7 @@ See what can be recovered:
 copilot-session-recovery list
 ```
 
-Preview the Windows Terminal tabs without opening them:
+Preview the recovery commands without opening terminal tabs:
 
 ```powershell
 copilot-session-recovery recover-sessions --dry-run
@@ -77,12 +78,12 @@ launcher is not the one you want recorded.
         |
         | recover-sessions
         v
- Windows Terminal
+ Windows Terminal / Apple Terminal
    +-- tab: copilot --resume=<session-id>
    +-- tab: agency copilot --resume=<session-id>
 ```
 
-A clean session ending removes its record. If Windows stops before the end hook
+A clean session ending removes its record. If the machine stops before the end hook
 runs, the record remains available for recovery.
 
 ## Essential commands
@@ -90,7 +91,7 @@ runs, the record remains available for recovery.
 | Command | Purpose |
 | --- | --- |
 | `copilot-session-recovery list` | List recoverable sessions. |
-| `copilot-session-recovery recover-sessions` | Reopen sessions in Windows Terminal. |
+| `copilot-session-recovery recover-sessions` | Reopen sessions in the platform terminal. |
 | `copilot-session-recovery add <session-id>` | Adopt an already-running session. |
 | `copilot-session-recovery remove <id-prefix>` | Forget one recorded session. |
 | `copilot-session-recovery prune --missing-cwd` | Remove sessions whose directories no longer exist. |
@@ -108,11 +109,12 @@ responses, source files, tool output, credentials, tokens, or private Copilot
 state.
 
 There is no runtime network behavior, telemetry, daemon, scheduler, or cloud
-sync. State stays under `%LOCALAPPDATA%\copilot-session-recovery`.
+sync. State stays under `%LOCALAPPDATA%\copilot-session-recovery` on Windows
+or `~/Library/Application Support/copilot-session-recovery` on macOS.
 
 ## Limitations
 
-- Recovery is for the same Windows user profile and machine.
+- Recovery is for the same user profile and machine.
 - It restores sessions, not the exact previous Terminal layout or window state.
 - Missing working directories are skipped individually.
 - Authentication still belongs to Copilot or Agency.
@@ -129,6 +131,12 @@ Remove the installation and all saved state:
 
 ```powershell
 copilot-session-recovery uninstall --purge
+```
+
+After removing hooks and any optional saved state, remove the global package:
+
+```powershell
+npm uninstall --global copilot-session-recovery
 ```
 
 ## Documentation

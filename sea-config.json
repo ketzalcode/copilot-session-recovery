@@ -1,9 +1,0 @@
-{
-  "main": "dist/copilot-session-recovery.mjs",
-  "mainFormat": "module",
-  "output": "dist/copilot-session-recovery-windows-x64.exe",
-  "disableExperimentalSEAWarning": true,
-  "useSnapshot": false,
-  "useCodeCache": false,
-  "useVfs": false
-}

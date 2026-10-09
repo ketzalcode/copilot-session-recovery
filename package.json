@@ -1,10 +1,36 @@
 {
   "name": "copilot-session-recovery",
   "version": "0.1.0",
-  "private": true,
+  "description": "Recover GitHub Copilot CLI sessions after an unexpected restart.",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ketzalcode/copilot-session-recovery.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ketzalcode/copilot-session-recovery/issues"
+  },
+  "homepage": "https://github.com/ketzalcode/copilot-session-recovery#readme",
   "engines": {
-    "node": "24.21.0"
+    "node": ">=24"
+  },
+  "os": [
+    "win32",
+    "darwin"
+  ],
+  "bin": {
+    "copilot-session-recovery": "dist/copilot-session-recovery.mjs"
+  },
+  "files": [
+    "dist/copilot-session-recovery.mjs",
+    "dist/copilot-session-recovery.mjs.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "test": "node scripts/test.mjs",
@@ -12,9 +38,9 @@
     "typecheck": "tsc --noEmit",
     "audit:runtime": "node scripts/audit-runtime.mjs",
     "build": "node scripts/build.mjs",
-    "checksum": "node scripts/checksum.mjs",
-    "smoke:sea": "node scripts/smoke-sea.mjs",
-    "verify": "npm run typecheck && npm test && npm run audit:runtime && npm run build && npm run checksum && npm run smoke:sea"
+    "smoke:package": "node scripts/smoke-package.mjs",
+    "prepack": "npm run build",
+    "verify": "npm run typecheck && npm test && npm run audit:runtime && npm run build && npm run smoke:package"
   },
   "devDependencies": {
     "@types/node": "24.19.0",
