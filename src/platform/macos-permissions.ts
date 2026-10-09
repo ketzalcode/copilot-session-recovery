@@ -1,7 +1,7 @@
 import {
-  chmod as defaultChmod,
+  constants,
   lstat as defaultLstat,
-  stat as defaultStat,
+  open as defaultOpen,
 } from "node:fs/promises";
 
 import type { AppPaths } from "../storage/paths.ts";
@@ -12,19 +12,28 @@ export interface ProtectionResult {
 }
 
 interface LinkStats {
+  dev: number;
+  ino: number;
   isSymbolicLink(): boolean;
 }
 
 interface FileStats {
+  dev: number;
+  ino: number;
   uid: number;
   mode: number;
+}
+
+interface MacFileHandle {
+  stat(): Promise<FileStats>;
+  chmod(mode: number): Promise<void>;
+  close(): Promise<void>;
 }
 
 export interface MacPermissionDependencies {
   getuid(): number;
   lstat(filePath: string): Promise<LinkStats>;
-  stat(filePath: string): Promise<FileStats>;
-  chmod(filePath: string, mode: number): Promise<void>;
+  open(filePath: string, flags: number): Promise<MacFileHandle>;
 }
 
 interface ProtectedPath {
@@ -43,8 +52,7 @@ function defaultDependencies(): MacPermissionDependencies {
       return uid;
     },
     lstat: defaultLstat,
-    stat: defaultStat,
-    chmod: defaultChmod,
+    open: defaultOpen,
   };
 }
 
@@ -74,20 +82,103 @@ function formatMode(mode: number): string {
   return (mode & 0o777).toString(8);
 }
 
+function sameIdentity(left: Pick<LinkStats, "dev" | "ino">, right: Pick<LinkStats, "dev" | "ino">): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function pathChanged(filePath: string): ProtectionResult {
+  return failure(`${filePath} changed while permissions were being applied.`);
+}
+
+function noFollowReadOnlyFlags(): number {
+  return constants.O_RDONLY | constants.O_NOFOLLOW;
+}
+
+interface OpenedPath {
+  handle: MacFileHandle;
+  details: FileStats;
+}
+
 async function inspectPath(
   filePath: string,
   deps: MacPermissionDependencies,
-): Promise<FileStats | ProtectionResult | undefined> {
+): Promise<OpenedPath | ProtectionResult | undefined> {
   try {
     const linkDetails = await deps.lstat(filePath);
     if (linkDetails.isSymbolicLink()) {
       return failure(`${filePath} is a symbolic link.`);
     }
 
-    return await deps.stat(filePath);
+    let handle: MacFileHandle;
+    try {
+      handle = await deps.open(filePath, noFollowReadOnlyFlags());
+    } catch (error) {
+      if (isErrnoException(error, "ENOENT")) {
+        return pathChanged(filePath);
+      }
+
+      if (isErrnoException(error, "ELOOP")) {
+        return failure(`${filePath} is a symbolic link.`);
+      }
+
+      return failure(
+        `${filePath} could not be opened securely: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    try {
+      const details = await handle.stat();
+      if (!sameIdentity(linkDetails, details)) {
+        await handle.close();
+        return pathChanged(filePath);
+      }
+
+      return {
+        handle,
+        details,
+      };
+    } catch (error) {
+      await handle.close();
+      return failure(
+        `${filePath} could not be inspected: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   } catch (error) {
     if (isErrnoException(error, "ENOENT")) {
       return undefined;
+    }
+
+    return failure(
+      `${filePath} could not be inspected: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+async function ensurePathUnchanged(
+  filePath: string,
+  expected: Pick<LinkStats, "dev" | "ino">,
+  deps: MacPermissionDependencies,
+): Promise<ProtectionResult | undefined> {
+  try {
+    const linkDetails = await deps.lstat(filePath);
+    if (linkDetails.isSymbolicLink()) {
+      return failure(`${filePath} is a symbolic link.`);
+    }
+
+    if (!sameIdentity(linkDetails, expected)) {
+      return pathChanged(filePath);
+    }
+
+    return undefined;
+  } catch (error) {
+    if (isErrnoException(error, "ENOENT")) {
+      return pathChanged(filePath);
     }
 
     return failure(
@@ -104,38 +195,46 @@ async function verifyOwnershipAndMode(
   deps: MacPermissionDependencies,
   action: "protect" | "check",
 ): Promise<ProtectionResult | undefined> {
-  const details = await inspectPath(filePath, deps);
-  if (details === undefined) {
+  const opened = await inspectPath(filePath, deps);
+  if (opened === undefined) {
     return undefined;
   }
 
-  if ("protected" in details) {
-    return details;
+  if ("protected" in opened) {
+    return opened;
   }
 
-  if (details.uid !== deps.getuid()) {
-    return failure(`${filePath} is not owned by the current user.`);
-  }
+  const { handle } = opened;
 
-  if (action === "protect") {
-    await deps.chmod(filePath, expectedMode);
-    const refreshed = await deps.stat(filePath);
-    if ((refreshed.mode & 0o777) !== expectedMode) {
+  try {
+    if (opened.details.uid !== deps.getuid()) {
       return failure(
-        `${filePath} permissions remain ${formatMode(refreshed.mode)} instead of ${formatMode(expectedMode)}.`,
+        `${filePath} is not owned by the current user.`,
       );
     }
 
-    return undefined;
-  }
+    if (action === "protect") {
+      await handle.chmod(expectedMode);
+      const refreshed = await handle.stat();
+      if ((refreshed.mode & 0o777) !== expectedMode) {
+        return failure(
+          `${filePath} permissions remain ${formatMode(refreshed.mode)} instead of ${formatMode(expectedMode)}.`,
+        );
+      }
 
-  if ((details.mode & 0o777) !== expectedMode) {
-    return failure(
-      `${filePath} permissions are ${formatMode(details.mode)} instead of ${formatMode(expectedMode)}.`,
-    );
-  }
+      return await ensurePathUnchanged(filePath, refreshed, deps);
+    }
 
-  return undefined;
+    if ((opened.details.mode & 0o777) !== expectedMode) {
+      return failure(
+        `${filePath} permissions are ${formatMode(opened.details.mode)} instead of ${formatMode(expectedMode)}.`,
+      );
+    }
+
+    return await ensurePathUnchanged(filePath, opened.details, deps);
+  } finally {
+    await handle.close();
+  }
 }
 
 async function protectOrCheckMacState(
