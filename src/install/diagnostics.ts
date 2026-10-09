@@ -4,6 +4,7 @@ import {
   type AppConfig,
 } from "../config/config.ts";
 import { commandExists as defaultCommandExists } from "../launch/process-runner.ts";
+import type { PlatformAdapter } from "../platform/platform.ts";
 import type { SessionRegistry } from "../session/model.ts";
 import type { AppPaths } from "../storage/paths.ts";
 import {
@@ -11,11 +12,7 @@ import {
   RegistryCorruptError,
   resetCorruptRegistry,
 } from "../storage/registry.ts";
-import {
-  checkStateDirectoryProtection,
-  type AclResult,
-} from "../platform/windows-permissions.ts";
-import { resolveRuntimeInstallation } from "../runtime/installation.ts";
+import type { RuntimeInstallation } from "../runtime/installation.ts";
 import { buildCopilotHookConfig } from "./copilot-hooks.ts";
 import { readFile, stat } from "node:fs/promises";
 
@@ -23,12 +20,12 @@ export type DiagnosticStatus = "ok" | "warning" | "error";
 
 export interface DiagnosticCheck {
   id:
-    | "installed-executable"
+    | "runtime"
     | "copilot-hook"
     | "configuration"
     | "registry"
-    | "state-acl"
-    | "windows-terminal"
+    | "state-protection"
+    | "terminal"
     | "launcher";
   status: DiagnosticStatus;
   summary: string;
@@ -48,13 +45,17 @@ export interface DoctorOptions {
 export interface DiagnosticDependencies {
   paths: AppPaths;
   output: CliOutput;
+  installation: RuntimeInstallation;
+  platform: PlatformAdapter;
   fileExists(filePath: string): Promise<boolean>;
   readText(filePath: string): Promise<string>;
   loadConfig(filePath: string): Promise<AppConfig>;
   readRegistry(registryFile: string, corruptDir: string): Promise<SessionRegistry>;
   resetCorruptRegistry(paths: AppPaths): Promise<string>;
-  commandExists(executable: string): Promise<boolean>;
-  checkStateDirectoryProtection(appDir: string): Promise<AclResult>;
+  commandExists(
+    executable: string,
+    platform: "win32" | "darwin",
+  ): Promise<boolean>;
 }
 
 function errorMessage(error: unknown): string {
@@ -83,22 +84,27 @@ async function productionFileExists(filePath: string): Promise<boolean> {
 export function createDiagnosticDependencies(
   paths: AppPaths,
   output: CliOutput,
+  installation: RuntimeInstallation,
+  platform: PlatformAdapter,
 ): DiagnosticDependencies {
   return {
     paths,
     output,
+    installation,
+    platform,
     fileExists: productionFileExists,
     readText: (filePath) => readFile(filePath, "utf8"),
     loadConfig,
     readRegistry,
     resetCorruptRegistry,
     commandExists: defaultCommandExists,
-    checkStateDirectoryProtection,
   };
 }
 
-function installedExecutablePath(paths: AppPaths): string {
-  return `${paths.appDir}\\bin\\copilot-session-recovery.exe`;
+function currentPlatform(
+  platform: PlatformAdapter,
+): "win32" | "darwin" {
+  return platform.id === "windows" ? "win32" : "darwin";
 }
 
 function ok(id: DiagnosticCheck["id"], summary: string, detail?: string): DiagnosticCheck {
@@ -129,20 +135,48 @@ function error(
     : { id, status: "error", summary, detail, fix };
 }
 
-async function installedExecutableCheck(
+async function runtimeCheck(
   deps: DiagnosticDependencies,
 ): Promise<DiagnosticCheck> {
-  const installedExecutable = installedExecutablePath(deps.paths);
-  if (await deps.fileExists(installedExecutable)) {
-    return ok("installed-executable", "Installed executable exists.");
+  const { nodeExecutable, cliEntry } = deps.installation;
+
+  if (nodeExecutable.length === 0) {
+    return error(
+      "runtime",
+      "Installed npm runtime is unavailable.",
+      "nodeExecutable is missing from the runtime installation.",
+      "Run install from the persistent npm installation.",
+    );
   }
 
-  return error(
-    "installed-executable",
-    "Installed executable is missing.",
-    installedExecutable,
-    "Run install from the self-contained executable.",
-  );
+  if (cliEntry.length === 0) {
+    return error(
+      "runtime",
+      "Installed npm runtime is unavailable.",
+      "cliEntry is missing from the runtime installation.",
+      "Run install from the persistent npm installation.",
+    );
+  }
+
+  if (!(await deps.fileExists(nodeExecutable))) {
+    return error(
+      "runtime",
+      "Installed npm runtime is unavailable.",
+      nodeExecutable,
+      "Repair or reinstall Node.js, then rerun install.",
+    );
+  }
+
+  if (!(await deps.fileExists(cliEntry))) {
+    return error(
+      "runtime",
+      "Installed npm runtime is unavailable.",
+      cliEntry,
+      "Reinstall copilot-session-recovery with npm, then rerun install.",
+    );
+  }
+
+  return ok("runtime", "Installed npm runtime is available.");
 }
 
 async function copilotHookCheck(
@@ -151,11 +185,7 @@ async function copilotHookCheck(
   try {
     const text = await deps.readText(deps.paths.copilotHookFile);
     const parsed = JSON.parse(text) as unknown;
-    const expected = buildCopilotHookConfig(
-      resolveRuntimeInstallation({
-        moduleUrl: new URL("../cli/main.ts", import.meta.url).href,
-      }),
-    );
+    const expected = buildCopilotHookConfig(deps.installation);
     if (JSON.stringify(parsed) === JSON.stringify(expected)) {
       return ok("copilot-hook", "Owned Copilot hook is installed.");
     }
@@ -221,34 +251,38 @@ async function registryCheck(
   }
 }
 
-async function stateAclCheck(
+async function stateProtectionCheck(
   deps: DiagnosticDependencies,
 ): Promise<DiagnosticCheck> {
-  const result = await deps.checkStateDirectoryProtection(deps.paths.appDir);
+  const result = await deps.platform.checkStateProtection(deps.paths);
   if (result.protected) {
-    return ok("state-acl", "State directory ACL is current-user protected.", result.detail);
+    return ok(
+      "state-protection",
+      "State directory is current-user protected.",
+      result.detail,
+    );
   }
 
   return warning(
-    "state-acl",
-    "State directory ACL protection could not be verified.",
+    "state-protection",
+    "State directory protection could not be verified.",
     result.detail,
-    "Run install again or inspect the directory ACL.",
+    "Run install again or inspect the state directory permissions.",
   );
 }
 
-async function windowsTerminalCheck(
+async function terminalCheck(
   deps: DiagnosticDependencies,
 ): Promise<DiagnosticCheck> {
-  if (await deps.commandExists("wt.exe")) {
-    return ok("windows-terminal", "Windows Terminal is available.");
+  if (await deps.platform.terminalAvailable()) {
+    return ok("terminal", `${deps.platform.terminalName} is available.`);
   }
 
   return error(
-    "windows-terminal",
-    "Windows Terminal was not found.",
-    "wt.exe is not available on PATH.",
-    "Install Windows Terminal or repair PATH.",
+    "terminal",
+    `${deps.platform.terminalName} is unavailable.`,
+    `${deps.platform.terminalName} could not be confirmed on this installation.`,
+    "Repair the terminal integration for this platform.",
   );
 }
 
@@ -273,7 +307,12 @@ async function launcherCheck(
     );
   }
 
-  if (await deps.commandExists(profile.executable)) {
+  if (
+    await deps.commandExists(
+      profile.executable,
+      currentPlatform(deps.platform),
+    )
+  ) {
     return ok("launcher", `Launcher ${config.defaultProfile} is available.`);
   }
 
@@ -290,12 +329,12 @@ export async function collectDiagnostics(
 ): Promise<DiagnosticReport> {
   const configuration = await configurationCheck(deps);
   const checks = [
-    await installedExecutableCheck(deps),
+    await runtimeCheck(deps),
     await copilotHookCheck(deps),
     configuration.check,
     await registryCheck(deps),
-    await stateAclCheck(deps),
-    await windowsTerminalCheck(deps),
+    await stateProtectionCheck(deps),
+    await terminalCheck(deps),
     await launcherCheck(deps, configuration.config),
   ];
 

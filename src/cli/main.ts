@@ -142,6 +142,7 @@ export async function main(
   );
   const paths = overrides.paths ?? adapter.resolvePaths(overrides.env ?? process.env);
   const output = overrides.output ?? createCliOutput();
+  const installation = resolveRuntimeInstallation({ moduleUrl: import.meta.url });
 
   if (command.name === "install") {
     return installCommand(
@@ -150,7 +151,7 @@ export async function main(
         createInstallerDependencies(
           paths,
           output,
-          resolveRuntimeInstallation({ moduleUrl: import.meta.url }),
+          installation,
           adapter,
         ),
     );
@@ -159,7 +160,7 @@ export async function main(
   if (command.name === "status") {
     return statusCommand(
       overrides.diagnosticDependencies ??
-        createDiagnosticDependencies(paths, output),
+        createDiagnosticDependencies(paths, output, installation, adapter),
     );
   }
 
@@ -167,7 +168,7 @@ export async function main(
     return doctorCommand(
       command.options,
       overrides.diagnosticDependencies ??
-        createDiagnosticDependencies(paths, output),
+        createDiagnosticDependencies(paths, output, installation, adapter),
     );
   }
 
@@ -178,7 +179,7 @@ export async function main(
         createInstallerDependencies(
           paths,
           output,
-          resolveRuntimeInstallation({ moduleUrl: import.meta.url }),
+          installation,
           adapter,
         ),
     );
