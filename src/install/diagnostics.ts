@@ -15,6 +15,7 @@ import {
   checkStateDirectoryProtection,
   type AclResult,
 } from "../platform/windows-permissions.ts";
+import { resolveRuntimeInstallation } from "../runtime/installation.ts";
 import { buildCopilotHookConfig } from "./copilot-hooks.ts";
 import { readFile, stat } from "node:fs/promises";
 
@@ -150,7 +151,11 @@ async function copilotHookCheck(
   try {
     const text = await deps.readText(deps.paths.copilotHookFile);
     const parsed = JSON.parse(text) as unknown;
-    const expected = buildCopilotHookConfig(installedExecutablePath(deps.paths));
+    const expected = buildCopilotHookConfig(
+      resolveRuntimeInstallation({
+        moduleUrl: new URL("../cli/main.ts", import.meta.url).href,
+      }),
+    );
     if (JSON.stringify(parsed) === JSON.stringify(expected)) {
       return ok("copilot-hook", "Owned Copilot hook is installed.");
     }

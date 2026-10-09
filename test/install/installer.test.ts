@@ -15,7 +15,8 @@ import {
   type InstallerDependencies,
   uninstallCommand,
 } from "../../src/install/installer.ts";
-import type { SelfDeleteRequest } from "../../src/install/self-delete.ts";
+import type { PlatformAdapter } from "../../src/platform/platform.ts";
+import type { RuntimeInstallation } from "../../src/runtime/installation.ts";
 import type { AppPaths } from "../../src/storage/paths.ts";
 
 interface OutputCapture {
@@ -25,31 +26,30 @@ interface OutputCapture {
 }
 
 type TestPaths = AppPaths & {
-  binDir: string;
-  installedExecutable: string;
+  hookDirectory: string;
 };
 
 interface InstallerDependencyOverrides {
   aclProtected?: boolean;
-  currentExecutable?: string;
   existingConfig?: AppConfig;
-  installed?: boolean;
-  isSea?: boolean;
+  existingRegistry?: boolean;
+  installation?: RuntimeInstallation;
+  resolvedPaths?: AppPaths;
 }
 
 type TestInstallerDependencies = Omit<InstallerDependencies, "paths"> & {
   paths: TestPaths;
-  cleanupRequests: SelfDeleteRequest[];
   configWrites: number;
-  copiedFiles: [string, string][];
-  currentExecutable: string;
-  currentPid: number;
+  ensuredDirectories: string[];
+  jsonWrites: string[];
   protectedDirectories: string[];
   remainingFiles: string[];
-  removedPathEntries: string[];
+  removedDirectories: string[];
+  removedFiles: string[];
   savedConfig: AppConfig | undefined;
-  userPathEntries: string[];
+  installation: RuntimeInstallation;
   writtenHookConfig: unknown;
+  writeHookInstallations: RuntimeInstallation[];
   outputCapture: OutputCapture;
 };
 
@@ -93,12 +93,6 @@ function createPaths(): TestPaths {
   const appDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery";
   return {
     appDir,
-    binDir: path.win32.join(appDir, "bin"),
-    installedExecutable: path.win32.join(
-      appDir,
-      "bin",
-      "copilot-session-recovery.exe",
-    ),
     configFile: path.win32.join(appDir, "config.json"),
     registryFile: path.win32.join(appDir, "sessions.json"),
     lockFile: path.win32.join(appDir, "sessions.lock"),
@@ -106,8 +100,49 @@ function createPaths(): TestPaths {
     corruptDir: path.win32.join(appDir, "corrupt"),
     copilotHookFile:
       "C:\\Users\\ruben\\.copilot\\hooks\\copilot-session-recovery.json",
+    hookDirectory: "C:\\Users\\ruben\\.copilot\\hooks",
     launchPlanFile: path.win32.join(appDir, "launch-plan.json"),
     launchPlanLockFile: path.win32.join(appDir, "launch-plan.lock"),
+  };
+}
+
+function createInstallation(): RuntimeInstallation {
+  return {
+    nodeExecutable: "C:\\Program Files\\nodejs\\node.exe",
+    cliEntry:
+      "C:\\npm\\node_modules\\copilot-session-recovery\\dist\\copilot-session-recovery.mjs",
+  };
+}
+
+function createPlatformAdapter(
+  paths: AppPaths,
+  protectedDirectories: string[],
+  overrides: InstallerDependencyOverrides = {},
+): PlatformAdapter {
+  return {
+    id: "windows",
+    terminalName: "Windows Terminal",
+    resolvePaths() {
+      return overrides.resolvedPaths ?? paths;
+    },
+    async protectState(appPaths) {
+      protectedDirectories.push(appPaths.appDir);
+      return overrides.aclProtected === false
+        ? { protected: false, detail: "icacls failed" }
+        : {
+            protected: true,
+            detail: "State directory is protected for the current user.",
+          };
+    },
+    async checkStateProtection() {
+      return {
+        protected: true,
+        detail: "State directory is protected for the current user.",
+      };
+    },
+    async terminalAvailable() {
+      return true;
+    },
   };
 }
 
@@ -123,50 +158,38 @@ function createInstallerDependencies(
 ): TestInstallerDependencies {
   const paths = createPaths();
   const outputCapture = createOutputCapture();
-  const currentExecutable =
-    overrides.currentExecutable ??
-    "C:\\Downloads\\copilot-session-recovery.exe";
-  const remainingFiles = overrides.installed
-    ? [
-        paths.installedExecutable,
-        paths.configFile,
-        paths.registryFile,
-        paths.copilotHookFile,
-      ]
-    : [];
+  const installation = overrides.installation ?? createInstallation();
+  const remainingFiles: string[] = [];
+  if (overrides.existingRegistry) {
+    remainingFiles.push(paths.registryFile);
+  }
   let savedConfig = overrides.existingConfig;
   if (savedConfig !== undefined && !remainingFiles.includes(paths.configFile)) {
     remainingFiles.push(paths.configFile);
   }
+  const protectedDirectories: string[] = [];
 
   const deps: TestInstallerDependencies = {
     paths,
     output: outputCapture.output,
     outputCapture,
-    currentExecutable,
-    currentPid: 9876,
-    platform: "win32",
-    copiedFiles: [],
-    userPathEntries: [],
-    removedPathEntries: [],
-    protectedDirectories: [],
-    cleanupRequests: [],
+    installation,
+    protectedDirectories,
+    platform: createPlatformAdapter(paths, protectedDirectories, overrides),
+    ensuredDirectories: [],
+    jsonWrites: [],
     remainingFiles,
+    removedDirectories: [],
+    removedFiles: [],
     savedConfig,
     configWrites: 0,
     writtenHookConfig: undefined,
-    isSea() {
-      return overrides.isSea ?? true;
+    writeHookInstallations: [],
+    async ensureDirectory(directory) {
+      deps.ensuredDirectories.push(directory);
     },
-    async ensureDirectory() {},
     async fileExists(filePath) {
       return remainingFiles.includes(filePath);
-    },
-    async copyFileAtomic(source, destination) {
-      deps.copiedFiles.push([source, destination]);
-      if (!remainingFiles.includes(destination)) {
-        remainingFiles.push(destination);
-      }
     },
     async loadConfig() {
       if (savedConfig === undefined) {
@@ -185,36 +208,24 @@ function createInstallerDependencies(
       }
     },
     async writeJson(filePath) {
+      deps.jsonWrites.push(filePath);
       if (!remainingFiles.includes(filePath)) {
         remainingFiles.push(filePath);
       }
     },
-    async writeCopilotHookConfig() {
-      deps.writtenHookConfig = buildCopilotHookConfig(paths.installedExecutable);
+    async writeCopilotHookConfig(_paths, runtimeInstallation) {
+      deps.writeHookInstallations.push(runtimeInstallation);
+      deps.writtenHookConfig = buildCopilotHookConfig(runtimeInstallation);
       if (!remainingFiles.includes(paths.copilotHookFile)) {
         remainingFiles.push(paths.copilotHookFile);
       }
     },
-    async ensureUserPathEntry(binDir) {
-      deps.userPathEntries.push(binDir);
-    },
-    async removeUserPathEntry(binDir) {
-      deps.removedPathEntries.push(binDir);
-    },
-    async protectStateDirectory(appDir) {
-      deps.protectedDirectories.push(appDir);
-      return overrides.aclProtected === false
-        ? { protected: false, detail: "icacls failed" }
-        : {
-            protected: true,
-            detail: "State directory is protected for the current user.",
-          };
-    },
     async removeFile(filePath) {
+      deps.removedFiles.push(filePath);
       removeOne(remainingFiles, filePath);
     },
-    scheduleSelfDelete(request) {
-      deps.cleanupRequests.push(request);
+    async removeDirectory(directory) {
+      deps.removedDirectories.push(directory);
     },
   };
 
@@ -241,74 +252,87 @@ test("parseCliArguments parses install diagnostics and uninstall commands", () =
   });
 });
 
-test("install copies the SEA, creates config once, writes hooks, and adds PATH", async () => {
+test("install creates state directories and writes hooks for the persistent npm runtime", async () => {
   const deps = createInstallerDependencies();
 
   assert.equal(await installCommand({ profile: "agency" }, deps), 0);
-  assert.deepEqual(deps.copiedFiles, [
-    [deps.currentExecutable, deps.paths.installedExecutable],
+  assert.deepEqual(deps.ensuredDirectories, [
+    deps.paths.appDir,
+    deps.paths.diagnosticsDir,
+    deps.paths.corruptDir,
+    deps.paths.hookDirectory,
   ]);
   assert.equal(deps.configWrites, 1);
   assert.equal(deps.savedConfig?.defaultProfile, "agency");
+  assert.deepEqual(deps.jsonWrites, [deps.paths.registryFile]);
+  assert.deepEqual(deps.writeHookInstallations, [deps.installation]);
   assert.deepEqual(
     deps.writtenHookConfig,
-    buildCopilotHookConfig(deps.paths.installedExecutable),
+    buildCopilotHookConfig(deps.installation),
   );
-  assert.equal(deps.userPathEntries.at(-1), deps.paths.binDir);
   assert.equal(deps.protectedDirectories.at(-1), deps.paths.appDir);
-  assert.match(deps.outputCapture.text(), /Installed copilot-session-recovery/i);
-  assert.match(deps.outputCapture.text(), /restart already-open terminals/i);
+  assert.match(deps.outputCapture.text(), /configured copilot-session-recovery/i);
 });
 
-test("repair install preserves an existing valid custom configuration", async () => {
-  const deps = createInstallerDependencies({ existingConfig: customConfig });
-
-  assert.equal(await installCommand({}, deps), 0);
-  assert.equal(deps.configWrites, 0);
-  assert.deepEqual(deps.savedConfig, customConfig);
-});
-
-test("uninstall preserves state unless purge is explicit", async () => {
-  const deps = createInstallerDependencies({ installed: true });
-
-  assert.equal(await uninstallCommand({ purge: false }, deps), 0);
-  assert.ok(deps.remainingFiles.includes(deps.paths.registryFile));
-  assert.ok(deps.remainingFiles.includes(deps.paths.configFile));
-  assert.ok(!deps.remainingFiles.includes(deps.paths.copilotHookFile));
-  assert.equal(deps.removedPathEntries.at(-1), deps.paths.binDir);
-  assert.deepEqual(deps.cleanupRequests, [
-    {
-      parentPid: deps.currentPid,
-      installedExecutable: deps.paths.installedExecutable,
-      appDir: deps.paths.appDir,
-      purge: false,
-    },
-  ]);
-});
-
-test("repair install does not copy the executable over itself", async () => {
+test("repair install preserves an existing valid config and registry", async () => {
   const deps = createInstallerDependencies({
-    currentExecutable:
-      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
+    existingConfig: customConfig,
+    existingRegistry: true,
   });
 
   assert.equal(await installCommand({}, deps), 0);
-  assert.equal(deps.copiedFiles.length, 0);
+  assert.equal(deps.configWrites, 0);
+  assert.equal(deps.jsonWrites.length, 0);
+  assert.deepEqual(deps.savedConfig, customConfig);
 });
 
-test("uninstall --purge schedules exact app directory cleanup after exit", async () => {
-  const deps = createInstallerDependencies({ installed: true });
+test("install rejects npx before mutating the filesystem", async () => {
+  const deps = createInstallerDependencies({
+    installation: {
+      nodeExecutable: "/opt/homebrew/bin/node",
+      cliEntry:
+        "/Users/ruben/.npm/_npx/abc/node_modules/copilot-session-recovery/dist/copilot-session-recovery.mjs",
+    },
+  });
+
+  assert.equal(await installCommand({}, deps), 1);
+  assert.equal(deps.ensuredDirectories.length, 0);
+  assert.equal(deps.configWrites, 0);
+  assert.equal(deps.jsonWrites.length, 0);
+  assert.equal(deps.writeHookInstallations.length, 0);
+  assert.equal(deps.protectedDirectories.length, 0);
+  assert.match(
+    deps.outputCapture.errorText(),
+    /npm install --global copilot-session-recovery/i,
+  );
+});
+
+test("uninstall removes only the owned hook without purge", async () => {
+  const deps = createInstallerDependencies({
+    existingConfig: customConfig,
+    existingRegistry: true,
+  });
+  deps.remainingFiles.push(deps.paths.copilotHookFile);
+
+  assert.equal(await uninstallCommand({ purge: false }, deps), 0);
+  assert.deepEqual(deps.removedFiles, [deps.paths.copilotHookFile]);
+  assert.deepEqual(deps.removedDirectories, []);
+  assert.ok(deps.remainingFiles.includes(deps.paths.registryFile));
+  assert.ok(deps.remainingFiles.includes(deps.paths.configFile));
+  assert.ok(!deps.remainingFiles.includes(deps.paths.copilotHookFile));
+});
+
+test("uninstall --purge removes the application directory after the owned hook", async () => {
+  const deps = createInstallerDependencies({
+    existingConfig: customConfig,
+    existingRegistry: true,
+  });
+  deps.remainingFiles.push(deps.paths.copilotHookFile);
 
   assert.equal(await uninstallCommand({ purge: true }, deps), 0);
   assert.ok(deps.remainingFiles.includes(deps.paths.registryFile));
-  assert.deepEqual(deps.cleanupRequests, [
-    {
-      parentPid: deps.currentPid,
-      installedExecutable: deps.paths.installedExecutable,
-      appDir: deps.paths.appDir,
-      purge: true,
-    },
-  ]);
+  assert.deepEqual(deps.removedFiles, [deps.paths.copilotHookFile]);
+  assert.deepEqual(deps.removedDirectories, [deps.paths.appDir]);
 });
 
 test("install warns but succeeds when current-user ACL protection fails", async () => {
@@ -316,11 +340,4 @@ test("install warns but succeeds when current-user ACL protection fails", async 
 
   assert.equal(await installCommand({}, deps), 0);
   assert.match(deps.outputCapture.errorText(), /icacls failed/);
-});
-
-test("install refuses non-SEA executions", async () => {
-  const deps = createInstallerDependencies({ isSea: false });
-
-  assert.equal(await installCommand({}, deps), 1);
-  assert.match(deps.outputCapture.errorText(), /self-contained executable/i);
 });

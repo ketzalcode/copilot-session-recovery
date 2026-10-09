@@ -4,6 +4,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { main } from "../../src/cli/main.ts";
+import type { InstallerDependencies } from "../../src/install/installer.ts";
+import type { PlatformAdapter } from "../../src/platform/platform.ts";
+import type { RuntimeInstallation } from "../../src/runtime/installation.ts";
 import { APP_VERSION } from "../../src/version.ts";
 
 const HELP_TEXT = [
@@ -52,6 +55,80 @@ interface CommandResult {
   code: number | null;
   stdout: string;
   stderr: string;
+}
+
+function createInstallerDependencies(): InstallerDependencies {
+  const installation: RuntimeInstallation = {
+    nodeExecutable: "C:\\Program Files\\nodejs\\node.exe",
+    cliEntry:
+      "C:\\npm\\node_modules\\copilot-session-recovery\\dist\\copilot-session-recovery.mjs",
+  };
+  const paths = {
+    appDir: "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery",
+    configFile:
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\config.json",
+    registryFile:
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\sessions.json",
+    lockFile:
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\sessions.lock",
+    diagnosticsDir:
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\diagnostics",
+    corruptDir:
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\corrupt",
+    copilotHookFile:
+      "C:\\Users\\ruben\\.copilot\\hooks\\copilot-session-recovery.json",
+    launchPlanFile:
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\launch-plan.json",
+    launchPlanLockFile:
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\launch-plan.lock",
+  };
+  const platform: PlatformAdapter = {
+    id: "windows",
+    terminalName: "Windows Terminal",
+    resolvePaths() {
+      return paths;
+    },
+    async protectState() {
+      return {
+        protected: true,
+        detail: "State directory is protected for the current user.",
+      };
+    },
+    async checkStateProtection() {
+      return {
+        protected: true,
+        detail: "State directory is protected for the current user.",
+      };
+    },
+    async terminalAvailable() {
+      return true;
+    },
+  };
+
+  return {
+    paths,
+    output: {
+      out() {},
+      error() {},
+      async confirm() {
+        return true;
+      },
+    },
+    installation,
+    platform,
+    async ensureDirectory() {},
+    async fileExists() {
+      return false;
+    },
+    async loadConfig() {
+      throw new Error("missing");
+    },
+    async saveConfig() {},
+    async writeJson() {},
+    async writeCopilotHookConfig() {},
+    async removeFile() {},
+    async removeDirectory() {},
+  };
 }
 
 async function captureProcessOutput<T>(
@@ -154,4 +231,10 @@ test("unknown commands exit with code 1 and print the parse error", async () => 
   assert.equal(result.code, 1);
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /Unknown command: unknown-command/);
+});
+
+test("main accepts installer dependencies with npm runtime installation data", async () => {
+  const dependencies = createInstallerDependencies();
+
+  assert.equal(await main(["install"], { installerDependencies: dependencies }), 0);
 });

@@ -1,15 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import {
-  access,
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -118,29 +109,6 @@ async function waitFor(predicate, description) {
   throw new Error(`Timed out waiting for ${description}.`);
 }
 
-async function removeUserPathEntry(binDir) {
-  const script = String.raw`
-$target = $env:COPILOT_SESSION_RECOVERY_BIN_DIR
-$current = [Environment]::GetEnvironmentVariable('Path', 'User')
-if ($null -eq $current) { $current = '' }
-$parts = @($current -split ';' | Where-Object { $_ })
-$comparison = [StringComparer]::OrdinalIgnoreCase
-$targetNormalized = $target.TrimEnd('\')
-$nextParts = @($parts | Where-Object { -not $comparison.Equals($_.TrimEnd('\'), $targetNormalized) })
-$next = ($nextParts -join ';')
-[Environment]::SetEnvironmentVariable('Path', $next, 'User')
-`;
-
-  await run(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script],
-    {
-      ...process.env,
-      COPILOT_SESSION_RECOVERY_BIN_DIR: binDir,
-    },
-  );
-}
-
 function sessionStartPayload(sessionId, cwd, timestamp) {
   return JSON.stringify({
     sessionId,
@@ -152,12 +120,9 @@ function sessionStartPayload(sessionId, cwd, timestamp) {
 
 function appPaths(localAppData, userProfile, copilotHome) {
   const appDir = path.win32.join(localAppData, "copilot-session-recovery");
-  const binDir = path.win32.join(appDir, "bin");
 
   return {
     appDir,
-    binDir,
-    installedExecutable: path.win32.join(binDir, "copilot-session-recovery.exe"),
     configFile: path.win32.join(appDir, "config.json"),
     registryFile: path.win32.join(appDir, "sessions.json"),
     copilotHookFile: path.win32.join(
@@ -219,9 +184,8 @@ try {
 
   result = await run(executable, ["install", "--profile", "agency"], childEnv);
   assert.equal(result.code, 0, result.stderr);
-  assert.match(result.stdout, /Installed copilot-session-recovery/);
+  assert.match(result.stdout, /Configured copilot-session-recovery/);
 
-  await assertExists(paths.installedExecutable);
   await assertExists(paths.configFile);
   await assertExists(paths.registryFile);
   await assertExists(paths.copilotHookFile);
@@ -231,7 +195,12 @@ try {
   const registry = JSON.parse(await readFile(paths.registryFile, "utf8"));
   assert.deepEqual(registry.sessions, {});
   const hook = JSON.parse(await readFile(paths.copilotHookFile, "utf8"));
-  assert.equal(hook.hooks.sessionStart[0].exec, paths.installedExecutable);
+  assert.equal(hook.hooks.sessionStart[0].exec, executable);
+  assert.deepEqual(hook.hooks.sessionStart[0].args, [
+    executable,
+    "hook",
+    "session-start",
+  ]);
 
   const cwdA = path.join(sessionRoot, "alpha");
   const cwdB = path.join(sessionRoot, "beta");
@@ -239,7 +208,7 @@ try {
   await mkdir(cwdB, { recursive: true });
 
   result = await run(
-    paths.installedExecutable,
+    executable,
     ["hook", "session-start"],
     childEnv,
     sessionStartPayload(sessionA, cwdA, 1_812_379_200_000),
@@ -248,7 +217,7 @@ try {
   assert.equal(result.stdout, "{}\n");
 
   result = await run(
-    paths.installedExecutable,
+    executable,
     ["hook", "session-start"],
     childEnv,
     sessionStartPayload(sessionB, cwdB, 1_812_379_201_000),
@@ -257,7 +226,7 @@ try {
   assert.equal(result.stdout, "{}\n");
 
   result = await run(
-    paths.installedExecutable,
+    executable,
     ["recover-sessions", "--dry-run", "--profile", "agency"],
     childEnv,
   );
@@ -265,19 +234,14 @@ try {
   assert.match(result.stdout, new RegExp(`agency copilot --resume=${sessionA}`));
   assert.match(result.stdout, new RegExp(`agency copilot --resume=${sessionB}`));
 
-  result = await run(paths.installedExecutable, ["uninstall"], childEnv);
+  result = await run(executable, ["uninstall"], childEnv);
   assert.equal(result.code, 0, result.stderr);
-  await waitFor(
-    async () => !(await fileExists(paths.installedExecutable)),
-    "installed executable removal",
-  );
-
   await assertExists(paths.configFile);
   await assertExists(paths.registryFile);
   await assertAbsent(paths.copilotHookFile);
-  await assertAbsent(paths.installedExecutable);
 
-  await copyFile(executable, paths.installedExecutable);
+  result = await run(executable, ["install", "--profile", "agency"], childEnv);
+  assert.equal(result.code, 0, result.stderr);
   result = await run(executable, ["uninstall", "--purge"], childEnv);
   assert.equal(result.code, 0, result.stderr);
   await waitFor(
@@ -285,6 +249,5 @@ try {
     "application directory purge",
   );
 } finally {
-  await removeUserPathEntry(paths.binDir).catch(() => undefined);
   await rm(root, { recursive: true, force: true });
 }

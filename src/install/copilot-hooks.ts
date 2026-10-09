@@ -2,12 +2,13 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { atomicWriteJson } from "../storage/atomic-json.ts";
+import type { RuntimeInstallation } from "../runtime/installation.ts";
 import type { AppPaths } from "../storage/paths.ts";
 
 export interface CopilotHookCommand {
   type: "command";
   exec: string;
-  args: ["hook", "session-start" | "session-end"];
+  args: [string, "hook", "session-start" | "session-end"];
   timeoutSec: 5;
 }
 
@@ -20,14 +21,14 @@ export interface CopilotHookConfig {
 }
 
 export function buildCopilotHookConfig(
-  installedExecutable: string,
+  installation: RuntimeInstallation,
 ): CopilotHookConfig {
   const entry = (
     event: "session-start" | "session-end",
   ): CopilotHookCommand => ({
     type: "command",
-    exec: installedExecutable,
-    args: ["hook", event],
+    exec: installation.nodeExecutable,
+    args: [installation.cliEntry, "hook", event],
     timeoutSec: 5,
   });
 
@@ -40,17 +41,13 @@ export function buildCopilotHookConfig(
   };
 }
 
-function defaultInstalledExecutable(paths: AppPaths): string {
-  return path.win32.join(paths.appDir, "bin", "copilot-session-recovery.exe");
-}
-
 export async function writeCopilotHookConfig(
   paths: AppPaths,
-  installedExecutable = defaultInstalledExecutable(paths),
+  installation: RuntimeInstallation,
 ): Promise<void> {
   await mkdir(path.dirname(paths.copilotHookFile), { recursive: true });
   await atomicWriteJson(
     paths.copilotHookFile,
-    buildCopilotHookConfig(installedExecutable),
+    buildCopilotHookConfig(installation),
   );
 }

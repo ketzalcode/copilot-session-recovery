@@ -38,7 +38,11 @@ import {
   writeDiagnostic as writeHookDiagnostic,
   type HookDependencies,
 } from "../hooks/handler.ts";
-import { assertSupportedPlatform } from "../platform/platform.ts";
+import {
+  assertSupportedPlatform,
+  createPlatformAdapter,
+} from "../platform/platform.ts";
+import { resolveRuntimeInstallation } from "../runtime/installation.ts";
 import { resolveAppPaths, type AppPaths } from "../storage/paths.ts";
 
 const HELP_TEXT = [
@@ -131,19 +135,24 @@ export async function main(
   }
 
   const { platform } = assertSupportedPlatform(process.platform, process.arch);
-  const paths =
-    overrides.paths ??
-    resolveAppPaths({
-      platform,
-      ...(overrides.env === undefined ? {} : { env: overrides.env }),
-    });
+  const adapter = createPlatformAdapter(
+    process.platform,
+    process.arch,
+    overrides.env,
+  );
+  const paths = overrides.paths ?? adapter.resolvePaths(overrides.env ?? process.env);
   const output = overrides.output ?? createCliOutput();
 
   if (command.name === "install") {
     return installCommand(
       command.options,
       overrides.installerDependencies ??
-        createInstallerDependencies(paths, output),
+        createInstallerDependencies(
+          paths,
+          output,
+          resolveRuntimeInstallation({ moduleUrl: import.meta.url }),
+          adapter,
+        ),
     );
   }
 
@@ -166,7 +175,12 @@ export async function main(
     return uninstallCommand(
       command.options,
       overrides.installerDependencies ??
-        createInstallerDependencies(paths, output),
+        createInstallerDependencies(
+          paths,
+          output,
+          resolveRuntimeInstallation({ moduleUrl: import.meta.url }),
+          adapter,
+        ),
     );
   }
 

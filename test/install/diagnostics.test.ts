@@ -4,6 +4,7 @@ import test from "node:test";
 import type { CliOutput } from "../../src/cli/io.ts";
 import { defaultConfig, type AppConfig } from "../../src/config/config.ts";
 import { buildCopilotHookConfig } from "../../src/install/copilot-hooks.ts";
+import type { RuntimeInstallation } from "../../src/runtime/installation.ts";
 import {
   collectDiagnostics,
   repairRegistryCommand,
@@ -83,10 +84,19 @@ function createPaths(): TestPaths {
   };
 }
 
+function createInstallation(): RuntimeInstallation {
+  return {
+    nodeExecutable: "C:\\Program Files\\nodejs\\node.exe",
+    cliEntry:
+      "C:\\src\\copilot-session-recovery\\.worktrees\\npm-cross-platform\\src\\cli\\main.ts",
+  };
+}
+
 function createDiagnosticDependencies(
   overrides: DiagnosticOverrides = {},
 ): TestDiagnosticDependencies {
   const paths = createPaths();
+  const installation = createInstallation();
   const outputCapture = createOutputCapture(
     overrides.confirm ?? (async () => true),
   );
@@ -107,7 +117,7 @@ function createDiagnosticDependencies(
         throw new Error(`Unexpected read: ${filePath}`);
       }
 
-      return JSON.stringify(buildCopilotHookConfig(paths.installedExecutable));
+      return JSON.stringify(buildCopilotHookConfig(installation));
     },
     async loadConfig() {
       return config;

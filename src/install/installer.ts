@@ -1,12 +1,4 @@
-import { isSea } from "node:sea";
-import { randomUUID } from "node:crypto";
-import {
-  copyFile,
-  mkdir,
-  rename,
-  rm,
-  stat,
-} from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { CliOutput } from "../cli/io.ts";
@@ -19,14 +11,13 @@ import {
 } from "../config/config.ts";
 import { emptyRegistry } from "../session/lifecycle.ts";
 import { atomicWriteJson } from "../storage/atomic-json.ts";
-import type { AppPaths } from "../storage/paths.ts";
-import {
-  protectStateDirectory,
-  type AclResult,
-} from "../platform/windows-permissions.ts";
+import type { PlatformAdapter } from "../platform/platform.ts";
 import { writeCopilotHookConfig } from "./copilot-hooks.ts";
-import { scheduleSelfDelete, type SelfDeleteRequest } from "./self-delete.ts";
-import { ensureUserPathEntry, removeUserPathEntry } from "./user-path.ts";
+import {
+  assertPersistentInstallation,
+  type RuntimeInstallation,
+} from "../runtime/installation.ts";
+import type { AppPaths } from "../storage/paths.ts";
 
 export interface InstallOptions {
   profile?: string;
@@ -39,22 +30,19 @@ export interface UninstallOptions {
 export interface InstallerDependencies {
   paths: AppPaths;
   output: CliOutput;
-  currentExecutable: string;
-  currentPid: number;
-  platform: NodeJS.Platform;
-  isSea(): boolean;
+  installation: RuntimeInstallation;
+  platform: PlatformAdapter;
   ensureDirectory(directory: string): Promise<void>;
   fileExists(filePath: string): Promise<boolean>;
-  copyFileAtomic(source: string, destination: string): Promise<void>;
   loadConfig(filePath: string): Promise<AppConfig>;
   saveConfig(filePath: string, config: AppConfig): Promise<void>;
   writeJson(filePath: string, value: unknown): Promise<void>;
-  writeCopilotHookConfig(paths: AppPaths): Promise<void>;
-  ensureUserPathEntry(binDir: string): Promise<void>;
-  removeUserPathEntry(binDir: string): Promise<void>;
-  protectStateDirectory(appDir: string): Promise<AclResult>;
+  writeCopilotHookConfig(
+    paths: AppPaths,
+    installation: RuntimeInstallation,
+  ): Promise<void>;
   removeFile(filePath: string): Promise<void>;
-  scheduleSelfDelete(request: SelfDeleteRequest): void;
+  removeDirectory(directory: string): Promise<void>;
 }
 
 function errorMessage(error: unknown): string {
@@ -66,18 +54,6 @@ function isErrnoException(
   code: string,
 ): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === code;
-}
-
-function normalizedWindowsPath(filePath: string): string {
-  return path.win32.normalize(filePath).replace(/[\\]+$/u, "").toLowerCase();
-}
-
-function binDir(paths: AppPaths): string {
-  return path.win32.join(paths.appDir, "bin");
-}
-
-function installedExecutable(paths: AppPaths): string {
-  return path.win32.join(binDir(paths), "copilot-session-recovery.exe");
 }
 
 async function productionFileExists(filePath: string): Promise<boolean> {
@@ -92,64 +68,36 @@ async function productionFileExists(filePath: string): Promise<boolean> {
   }
 }
 
-async function copyFileAtomically(
-  source: string,
-  destination: string,
-): Promise<void> {
-  await mkdir(path.dirname(destination), { recursive: true });
-  const temporaryPath = path.join(
-    path.dirname(destination),
-    `.${path.basename(destination)}.${process.pid}.${randomUUID()}.tmp`,
-  );
-
-  try {
-    await copyFile(source, temporaryPath);
-    await rename(temporaryPath, destination);
-  } catch (error) {
-    await rm(temporaryPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
-}
-
 export function createInstallerDependencies(
   paths: AppPaths,
   output: CliOutput,
+  installation: RuntimeInstallation,
+  platform: PlatformAdapter,
 ): InstallerDependencies {
   return {
     paths,
     output,
-    currentExecutable: process.execPath,
-    currentPid: process.pid,
-    platform: process.platform,
-    isSea,
+    installation,
+    platform,
     ensureDirectory(directory) {
       return mkdir(directory, { recursive: true }).then(() => undefined);
     },
     fileExists: productionFileExists,
-    copyFileAtomic: copyFileAtomically,
     loadConfig,
     saveConfig,
     writeJson: atomicWriteJson,
     writeCopilotHookConfig,
-    ensureUserPathEntry,
-    removeUserPathEntry,
-    protectStateDirectory,
     removeFile(filePath) {
       return rm(filePath, { force: true });
     },
-    scheduleSelfDelete,
+    removeDirectory(directory) {
+      return rm(directory, { recursive: true, force: true });
+    },
   };
-}
-
-function assertWindows(deps: InstallerDependencies): void {
-  if (deps.platform !== "win32") {
-    throw new Error("Install and uninstall are supported only on Windows.");
-  }
 }
 
 async function ensureInstallDirectories(deps: InstallerDependencies): Promise<void> {
   await deps.ensureDirectory(deps.paths.appDir);
-  await deps.ensureDirectory(binDir(deps.paths));
   await deps.ensureDirectory(deps.paths.diagnosticsDir);
   await deps.ensureDirectory(deps.paths.corruptDir);
   await deps.ensureDirectory(path.dirname(deps.paths.copilotHookFile));
@@ -188,39 +136,21 @@ async function performInstall(
   options: InstallOptions,
   deps: InstallerDependencies,
 ): Promise<void> {
-  assertWindows(deps);
-
-  if (!deps.isSea()) {
-    throw new Error(
-      "Install must be run from the self-contained executable, not from Node.js source.",
-    );
-  }
+  assertPersistentInstallation(deps.installation);
 
   await ensureInstallDirectories(deps);
-
-  const targetExecutable = installedExecutable(deps.paths);
-
-  if (
-    normalizedWindowsPath(deps.currentExecutable) !==
-    normalizedWindowsPath(targetExecutable)
-  ) {
-    await deps.copyFileAtomic(deps.currentExecutable, targetExecutable);
-  }
-
   await installConfiguration(options, deps);
   await installRegistry(deps);
-  await deps.writeCopilotHookConfig(deps.paths);
-  await deps.ensureUserPathEntry(binDir(deps.paths));
+  await deps.writeCopilotHookConfig(deps.paths, deps.installation);
 
-  const acl = await deps.protectStateDirectory(deps.paths.appDir);
+  const acl = await deps.platform.protectState(deps.paths);
   if (!acl.protected) {
     deps.output.error(`Warning: ${acl.detail}`);
   }
 
   deps.output.out(
-    `Installed copilot-session-recovery to ${targetExecutable}.`,
+    "Configured copilot-session-recovery for the current npm installation.",
   );
-  deps.output.out("Restart already-open terminals to observe the updated PATH.");
 }
 
 export async function installCommand(
@@ -240,20 +170,22 @@ async function performUninstall(
   options: UninstallOptions,
   deps: InstallerDependencies,
 ): Promise<void> {
-  assertWindows(deps);
   await deps.removeFile(deps.paths.copilotHookFile);
-  await deps.removeUserPathEntry(binDir(deps.paths));
-  deps.scheduleSelfDelete({
-    parentPid: deps.currentPid,
-    installedExecutable: installedExecutable(deps.paths),
-    appDir: deps.paths.appDir,
-    purge: options.purge,
-  });
-  deps.output.out(
-    options.purge
-      ? `Scheduled removal of ${deps.paths.appDir} after this command exits.`
-      : `Scheduled removal of ${installedExecutable(deps.paths)} after this command exits.`,
-  );
+
+  if (!options.purge) {
+    deps.output.out("Removed the owned Copilot hook configuration.");
+    return;
+  }
+
+  const expectedAppDir = deps.platform.resolvePaths(process.env).appDir;
+  if (expectedAppDir !== deps.paths.appDir) {
+    throw new Error(
+      `Refusing to purge unexpected application directory: ${deps.paths.appDir}.`,
+    );
+  }
+
+  await deps.removeDirectory(deps.paths.appDir);
+  deps.output.out(`Removed ${deps.paths.appDir}.`);
 }
 
 export async function uninstallCommand(

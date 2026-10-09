@@ -8,22 +8,12 @@ import {
   buildCopilotHookConfig,
   writeCopilotHookConfig,
 } from "../../src/install/copilot-hooks.ts";
+import type { RuntimeInstallation } from "../../src/runtime/installation.ts";
 import type { AppPaths } from "../../src/storage/paths.ts";
 
-type TestPaths = AppPaths & {
-  installedExecutable: string;
-};
-
-function createPaths(root: string): TestPaths {
-  const installedExecutable = path.join(
-    root,
-    "bin",
-    "copilot-session-recovery.exe",
-  );
-
+function createPaths(root: string): AppPaths {
   return {
     appDir: root,
-    installedExecutable,
     configFile: path.join(root, "config.json"),
     registryFile: path.join(root, "sessions.json"),
     lockFile: path.join(root, "sessions.lock"),
@@ -40,27 +30,44 @@ function createPaths(root: string): TestPaths {
   };
 }
 
-test("builds an owned direct-exec hook configuration", () => {
-  assert.deepEqual(
-    buildCopilotHookConfig(
-      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
+function createInstallation(root: string): RuntimeInstallation {
+  return {
+    nodeExecutable: "C:\\Program Files\\nodejs\\node.exe",
+    cliEntry: path.join(
+      root,
+      "node_modules",
+      "copilot-session-recovery",
+      "dist",
+      "copilot-session-recovery.mjs",
     ),
+  };
+}
+
+test("builds an owned node-plus-cli hook configuration", () => {
+  const installation: RuntimeInstallation = {
+    nodeExecutable: "C:\\Program Files\\nodejs\\node.exe",
+    cliEntry:
+      "C:\\npm\\node_modules\\copilot-session-recovery\\dist\\copilot-session-recovery.mjs",
+  };
+
+  assert.deepEqual(
+    buildCopilotHookConfig(installation),
     {
       version: 1,
       hooks: {
         sessionStart: [
           {
             type: "command",
-            exec: "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
-            args: ["hook", "session-start"],
+            exec: installation.nodeExecutable,
+            args: [installation.cliEntry, "hook", "session-start"],
             timeoutSec: 5,
           },
         ],
         sessionEnd: [
           {
             type: "command",
-            exec: "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
-            args: ["hook", "session-end"],
+            exec: installation.nodeExecutable,
+            args: [installation.cliEntry, "hook", "session-end"],
             timeoutSec: 5,
           },
         ],
@@ -77,16 +84,17 @@ test("writes only the owned Copilot hook file", async (t) => {
     await rm(root, { recursive: true, force: true });
   });
   const paths = createPaths(root);
+  const installation = createInstallation(root);
   const siblingHook = path.join(root, ".copilot", "hooks", "other-tool.json");
 
   await mkdir(path.dirname(siblingHook), { recursive: true });
   await writeFile(siblingHook, JSON.stringify({ ownedBy: "someone-else" }));
 
-  await writeCopilotHookConfig(paths);
+  await writeCopilotHookConfig(paths, installation);
 
   assert.deepEqual(
     JSON.parse(await readFile(paths.copilotHookFile, "utf8")),
-    buildCopilotHookConfig(paths.installedExecutable),
+    buildCopilotHookConfig(installation),
   );
   assert.deepEqual(
     JSON.parse(await readFile(siblingHook, "utf8")),
