@@ -89,7 +89,7 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
-test("buildAppleTerminalScript stays static and uses bounded polling before sending the broker command to new tabs", () => {
+test("buildAppleTerminalScript stays static and accepts a front-window change or legacy tab growth before sending the broker command", () => {
   const script = buildAppleTerminalScript();
 
   assert.match(script, /copilot-session-recovery launch-next/);
@@ -97,8 +97,15 @@ test("buildAppleTerminalScript stays static and uses bounded polling before send
   assert.match(script, /keystroke "t" using command down/);
   assert.match(script, /set tabCount to item 1 of argv as integer/);
   assert.match(script, /frontmost of process "Terminal"/);
+  assert.match(script, /set previousFrontWindowId to id of front window/);
   assert.match(script, /set previousTabCount to count of tabs of front window/);
   assert.match(script, /set previousSelectedTabIndex to index of selected tab of front window/);
+  assert.match(
+    script,
+    /on waitForSelectedTab\(previousFrontWindowId, previousTabCount, previousSelectedTabIndex\)/,
+  );
+  assert.match(script, /set currentFrontWindowId to id of front window/);
+  assert.match(script, /if currentFrontWindowId is not previousFrontWindowId then/);
   assert.match(script, /if currentTabCount > previousTabCount then/);
   assert.match(script, /set currentSelectedTabIndex to index of selected tab of front window/);
   assert.match(script, /if currentSelectedTabIndex is not previousSelectedTabIndex then/);
