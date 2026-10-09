@@ -2,15 +2,29 @@
 
 Copilot Session Recovery uses official GitHub Copilot CLI lifecycle hooks to maintain a local registry of recoverable sessions. It does not inspect Copilot internals or private state.
 
+## Platform contract
+
+| Platform | Architectures | Recovery terminal | State root | Owned hook file |
+| --- | --- | --- | --- | --- |
+| Windows | x64 | Windows Terminal (`wt.exe`) | `%LOCALAPPDATA%\copilot-session-recovery` | `%USERPROFILE%\.copilot\hooks\copilot-session-recovery.json` |
+| macOS | x64, arm64 | Apple Terminal | `~/Library/Application Support/copilot-session-recovery` | `~/.copilot/hooks/copilot-session-recovery.json` |
+
+`COPILOT_HOME` overrides the default Copilot hook root on both platforms.
+`install` requires a persistent global npm installation and rejects `_npx`
+cache entrypoints because the owned hook file stores absolute runtime paths.
+
 ## Data flow
 
 1. `npm install --global copilot-session-recovery` provides the runtime, and `copilot-session-recovery install [--profile <name>]` creates the default configuration and registry files and writes the owned Copilot hook file under the current user's home directory.
-2. Copilot invokes `copilot-session-recovery hook session-start` and `copilot-session-recovery hook session-end` with official JSON hook payloads.
-3. Hook handlers validate payload shape, fields, and enum values, then update the platform state registry under its lock file.
-4. Registry writes use same-directory temporary files and atomic rename. Corrupt registries are copied to the platform `corrupt` directory before the command fails.
-5. `copilot-session-recovery recover-sessions` reads the registry and config, validates the platform terminal and each launcher executable, skips records whose working directory is missing, shows a table, confirms once, and launches Windows Terminal or Apple Terminal with structured arguments.
-6. `copilot-session-recovery add` lets a user adopt a session that started before hook installation. It validates the full session UUID, working directory, and launcher profile, then applies the same locked `resume` lifecycle transition used by hooks.
-7. Successful terminal launch does not remove registry records. Later Copilot `session-start` and clean `session-end` hooks remain authoritative.
+2. `install` writes absolute Node-plus-entry hook commands, not shell text:
+   - `"<absolute node path>" "<absolute package entry>" hook session-start`
+   - `"<absolute node path>" "<absolute package entry>" hook session-end`
+3. Copilot invokes those hook commands with official JSON hook payloads.
+4. Hook handlers validate payload shape, fields, and enum values, then update the platform state registry under its lock file.
+5. Registry writes use same-directory temporary files and atomic rename. Corrupt registries are copied to the platform `corrupt` directory before the command fails.
+6. `copilot-session-recovery recover-sessions` reads the registry and config, validates the platform terminal and each launcher executable, skips records whose working directory is missing, shows a table, confirms once, and launches Windows Terminal or Apple Terminal with structured arguments.
+7. `copilot-session-recovery add` lets a user adopt a session that started before hook installation. It validates the full session UUID, working directory, and launcher profile, then applies the same locked `resume` lifecycle transition used by hooks.
+8. Successful terminal launch does not remove registry records. Later Copilot `session-start` and clean `session-end` hooks remain authoritative.
 
 ## Components
 
@@ -58,6 +72,25 @@ The default profiles are:
 
 Profiles are structured executable-plus-argument arrays. Supported placeholders are `{sessionId}`, `{cwd}`, and `{sessionIdPrefix}`.
 
+## Platform recovery launch
+
+### Windows
+
+Windows recovery launches `wt.exe` with structured arguments only. Session
+paths, launcher executables, and launcher arguments stay in separate argv
+elements.
+
+### macOS
+
+macOS uses a launch broker so AppleScript never contains session or profile
+data:
+
+1. `recover-sessions` writes a locked launch plan under the application state directory.
+2. `/usr/bin/osascript` receives only a static AppleScript and the number of required tabs.
+3. Each Apple Terminal tab runs the constant command `copilot-session-recovery launch-next`.
+4. `launch-next` locks the launch plan, claims one pending entry, changes to its validated working directory, and starts the launcher with structured process arguments.
+5. Launch failures stay recorded for retry, and macOS permission denials keep the plan in place.
+
 ## Build and release flow
 
 `npm run verify` performs the full local validation pipeline:
@@ -72,4 +105,12 @@ npm run smoke:package
 
 `npm run build` creates `dist/copilot-session-recovery.mjs` and `dist/copilot-session-recovery.mjs.map`. `npm run smoke:package` builds the tarball, verifies the publish whitelist, installs it into an isolated npm prefix, exercises `--version`, `--help`, `install`, and `uninstall --purge`, then removes the temporary prefix and tarball.
 
-Local commands do not publish packages. Publish automation is handled separately in GitHub Actions.
+The package manifest sets `publishConfig.access=public` and
+`publishConfig.provenance=true`. Publish automation runs only from pushed `v*`
+tags in `.github/workflows/release.yml`, where GitHub Actions verifies the tag,
+runs `npm run verify` on Windows and macOS, and publishes through npm trusted
+publishing.
+
+Hosted verification cannot prove live Apple Terminal automation prompts or tab
+behavior. Public release readiness therefore includes an operator-run macOS
+check against the packed tarball.

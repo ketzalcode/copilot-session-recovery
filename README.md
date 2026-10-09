@@ -19,6 +19,11 @@ npm install --global copilot-session-recovery
 copilot-session-recovery install
 ```
 
+`install` is a persistent machine setup step. It requires a stable global npm
+installation and rejects npm's transient `_npx` cache. Use `npx
+copilot-session-recovery --help` or `npx copilot-session-recovery --version`
+for one-off inspection only.
+
 Microsoft employees using Agency can select that launcher during installation:
 
 ```powershell
@@ -27,6 +32,9 @@ copilot-session-recovery install --profile agency
 
 If an existing terminal does not find `copilot-session-recovery` after the global
 install, open a new terminal so your npm global bin directory is reloaded.
+
+Recovery requires Windows Terminal on Windows and Apple Terminal on macOS. The
+first macOS recovery can prompt for Terminal Automation permission.
 
 ## Recover after a restart
 
@@ -83,8 +91,16 @@ launcher is not the one you want recorded.
    +-- tab: agency copilot --resume=<session-id>
 ```
 
-A clean session ending removes its record. If the machine stops before the end hook
-runs, the record remains available for recovery.
+A clean session ending removes its record. If the machine stops before the end
+hook runs, the record remains available for recovery.
+
+The owned Copilot hook file stores absolute Node-plus-entry commands:
+
+- `"<absolute node path>" "<absolute package entry>" hook session-start`
+- `"<absolute node path>" "<absolute package entry>" hook session-end`
+
+That stable runtime contract is why persistent setup requires the global npm
+installation instead of `npx`.
 
 ## Essential commands
 

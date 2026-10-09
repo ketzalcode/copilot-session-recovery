@@ -11,13 +11,29 @@ copilot-session-recovery recover-sessions --dry-run
 
 Review output for sensitive local paths before sharing it.
 
-## `wt.exe` is missing
+## Recovery terminal is unavailable
 
-`recover-sessions`, `status`, and `doctor` require Windows Terminal to be available as `wt.exe` on PATH. Install Windows Terminal or repair PATH, then restart the terminal and run:
+### Windows: `wt.exe` is missing
+
+`recover-sessions`, `status`, and `doctor` require Windows Terminal to be
+available as `wt.exe` on PATH. Install Windows Terminal or repair PATH, then
+restart the terminal and run:
 
 ```powershell
 copilot-session-recovery doctor
 ```
+
+### macOS: Apple Terminal is unavailable
+
+`recover-sessions`, `status`, and `doctor` require Apple Terminal to be
+installed and launchable. If diagnostics report that Apple Terminal is
+unavailable, run:
+
+```powershell
+copilot-session-recovery doctor
+```
+
+Repair the local Terminal installation, then retry recovery.
 
 ## Launcher is missing
 
@@ -82,6 +98,17 @@ Confirm the owned hook exists at `%USERPROFILE%\.copilot\hooks\copilot-session-r
 
 If your organization disables or overrides user hooks, Copilot may not invoke `hook session-start` or `hook session-end`. In that case, recovery cannot work until hooks are allowed by policy.
 
+## `install` rejects `npx`
+
+Persistent setup writes absolute hook commands for the current Node executable
+and the globally installed package entry file. `npx` runs from a transient
+`_npx` cache, so `install` rejects it by design. Use:
+
+```powershell
+npm install --global copilot-session-recovery
+copilot-session-recovery install
+```
+
 ## Existing terminal does not find `copilot-session-recovery`
 
 Global npm installs expose `copilot-session-recovery` through your npm prefix. Already-open terminals keep their old environment. After:
@@ -96,6 +123,18 @@ open a new terminal so your npm global bin directory is reloaded. Then run:
 copilot-session-recovery install
 ```
 
+## Diagnostics say the installed npm runtime is unavailable
+
+If `status` or `doctor` reports that the installed npm runtime is unavailable,
+the absolute Node path or package entry file recorded at install time likely
+moved or was removed. Reinstall or repair Node.js or the global package, then
+rerun:
+
+```powershell
+copilot-session-recovery install
+copilot-session-recovery doctor
+```
+
 ## Global install fails or the package is unsupported
 
 The package requires Node.js 24 or newer and supports Windows x64 plus macOS x64 or arm64. Check:
@@ -106,6 +145,27 @@ npm --version
 ```
 
 If npm reports an unsupported platform or architecture, move to a supported machine. If Node is older than 24, install the version from `.node-version` and retry the global install.
+
+## macOS recovery reports Automation or Accessibility denial
+
+The first macOS recovery can trigger Apple Terminal Automation permission
+prompts. If recovery reports an Automation denial, allow your terminal app in:
+
+`System Settings > Privacy & Security > Automation`
+
+If recovery reports that `System Events` denied tab automation, allow your
+terminal app or `osascript` in:
+
+`System Settings > Privacy & Security > Accessibility`
+
+After approval, rerun:
+
+```powershell
+copilot-session-recovery recover-sessions
+```
+
+The launch plan stays on disk so the sessions remain recoverable while you fix
+permissions.
 
 ## Recovery preview works but launch fails
 

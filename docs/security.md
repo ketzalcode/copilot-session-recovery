@@ -11,11 +11,40 @@ Unexpected fields fail validation. Session IDs must be valid UUIDs, timestamps m
 
 Hooks fail open for Copilot. On validation or storage errors, the hook writes a diagnostic log when possible, prints a warning to stderr, prints `{}` to stdout, and exits successfully so Copilot is not blocked.
 
+## Persistent npm installation contract
+
+`install` requires a persistent global npm installation. The owned Copilot hook
+file records absolute paths to:
+
+- the current `process.execPath`; and
+- the bundled package entry file in the global installation.
+
+If the runtime entry file resolves under npm's transient `_npx` cache, `install`
+fails before mutating the filesystem. `npx` is intentionally limited to
+transient commands such as `--help` and `--version`.
+
 ## No shell execution
 
 Copilot Session Recovery launches processes with structured executable and argument arrays. It does not concatenate session IDs, paths, or profile values into shell command strings for recovery.
 
 Windows Terminal recovery uses `wt.exe` arguments built as an array. Launcher profiles are also executable-plus-argument arrays.
+
+## macOS launch broker
+
+Apple Terminal automation eventually executes shell text, so the product keeps
+session and profile data out of AppleScript entirely.
+
+`recover-sessions` writes a locked launch plan whose entries contain validated
+structured process definitions. `/usr/bin/osascript` receives only:
+
+- the static AppleScript source; and
+- the required tab count.
+
+Each Apple Terminal tab then runs the constant broker command
+`copilot-session-recovery launch-next`. That broker locks the launch plan,
+claims a single pending entry, changes to its validated working directory, and
+spawns the launcher with structured executable and argument arrays. Permission
+denials preserve the plan for retry instead of losing recovery state.
 
 ## Custom profile trust boundary
 
@@ -52,7 +81,17 @@ Local package verification:
 - exercises `--version`, `--help`, `install`, and `uninstall --purge`;
 - removes the generated tarball and temporary prefix afterward.
 
-The package manifest enables npm provenance for supported publish flows. Local commands build and validate artifacts only. They do not publish packages.
+The package manifest enables npm provenance for supported publish flows. The
+release workflow publishes only from pushed `v*` tags, uses GitHub Actions OIDC
+trusted publishing, and avoids long-lived npm automation tokens. Local
+commands build and validate artifacts only. They do not publish packages.
+
+## Manual Apple Terminal release boundary
+
+Hosted CI cannot approve macOS Automation prompts or verify that live Apple
+Terminal tabs resume the expected sessions. Before the first public release, and
+after any terminal-launch contract change, an operator must manually verify the
+packed tarball on macOS and record the result in the release checklist.
 
 ## Private Copilot state prohibition
 

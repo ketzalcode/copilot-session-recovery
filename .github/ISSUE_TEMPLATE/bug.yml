@@ -24,18 +24,42 @@ body:
     validations:
       required: true
   - type: input
-    id: windows-version
+    id: operating-system
     attributes:
-      label: Windows version
-      description: Include edition and build.
-      placeholder: "Windows 11 Enterprise 24H2 build ..."
+      label: Operating system
+      description: Include the exact supported OS and version.
+      placeholder: "Windows 11 24H2 or macOS 15.x"
     validations:
       required: true
   - type: input
-    id: windows-terminal-version
+    id: architecture
     attributes:
-      label: Windows Terminal version
-      description: Include the version that provides `wt.exe`.
+      label: Architecture
+      placeholder: "x64 or arm64"
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: Run `node --version`.
+      placeholder: "v24.21.0"
+    validations:
+      required: true
+  - type: input
+    id: npm-version
+    attributes:
+      label: npm version
+      description: Run `npm --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: terminal
+    attributes:
+      label: Terminal used for recovery
+      options:
+        - Windows Terminal
+        - Apple Terminal
     validations:
       required: true
   - type: dropdown
@@ -49,18 +73,10 @@ body:
     validations:
       required: true
   - type: textarea
-    id: status-output
-    attributes:
-      label: "`copilot-session-recovery status` output"
-      description: Review paths for sensitivity before pasting.
-      render: text
-    validations:
-      required: true
-  - type: textarea
     id: doctor-output
     attributes:
       label: "`copilot-session-recovery doctor` output"
-      description: Review paths for sensitivity before pasting.
+      description: Review paths for sensitivity before pasting. Do not include hook payloads, prompts, responses, source content, credentials, or tokens.
       render: text
     validations:
       required: true
