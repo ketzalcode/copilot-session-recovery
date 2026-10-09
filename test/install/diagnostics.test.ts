@@ -20,6 +20,10 @@ interface OutputCapture {
   prompts: string[];
 }
 
+type TestPaths = AppPaths & {
+  installedExecutable: string;
+};
+
 type TestDiagnosticDependencies = DiagnosticDependencies & {
   output: CliOutput;
   outputCapture: OutputCapture;
@@ -62,11 +66,10 @@ function createOutputCapture(
   };
 }
 
-function createPaths(): AppPaths {
+function createPaths(): TestPaths {
   const appDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery";
   return {
     appDir,
-    binDir: `${appDir}\\bin`,
     installedExecutable: `${appDir}\\bin\\copilot-session-recovery.exe`,
     configFile: `${appDir}\\config.json`,
     registryFile: `${appDir}\\sessions.json`,
@@ -75,6 +78,8 @@ function createPaths(): AppPaths {
     corruptDir: `${appDir}\\corrupt`,
     copilotHookFile:
       "C:\\Users\\ruben\\.copilot\\hooks\\copilot-session-recovery.json",
+    launchPlanFile: `${appDir}\\launch-plan.json`,
+    launchPlanLockFile: `${appDir}\\launch-plan.lock`,
   };
 }
 

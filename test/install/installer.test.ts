@@ -24,6 +24,11 @@ interface OutputCapture {
   errorText(): string;
 }
 
+type TestPaths = AppPaths & {
+  binDir: string;
+  installedExecutable: string;
+};
+
 interface InstallerDependencyOverrides {
   aclProtected?: boolean;
   currentExecutable?: string;
@@ -32,7 +37,8 @@ interface InstallerDependencyOverrides {
   isSea?: boolean;
 }
 
-type TestInstallerDependencies = InstallerDependencies & {
+type TestInstallerDependencies = Omit<InstallerDependencies, "paths"> & {
+  paths: TestPaths;
   cleanupRequests: SelfDeleteRequest[];
   configWrites: number;
   copiedFiles: [string, string][];
@@ -83,7 +89,7 @@ function createOutputCapture(): OutputCapture {
   };
 }
 
-function createPaths(): AppPaths {
+function createPaths(): TestPaths {
   const appDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery";
   return {
     appDir,
@@ -100,6 +106,8 @@ function createPaths(): AppPaths {
     corruptDir: path.win32.join(appDir, "corrupt"),
     copilotHookFile:
       "C:\\Users\\ruben\\.copilot\\hooks\\copilot-session-recovery.json",
+    launchPlanFile: path.win32.join(appDir, "launch-plan.json"),
+    launchPlanLockFile: path.win32.join(appDir, "launch-plan.lock"),
   };
 }
 
@@ -281,9 +289,8 @@ test("uninstall preserves state unless purge is explicit", async () => {
 test("repair install does not copy the executable over itself", async () => {
   const deps = createInstallerDependencies({
     currentExecutable:
-      "C:\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
+      "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery\\bin\\copilot-session-recovery.exe",
   });
-  deps.paths.installedExecutable = deps.currentExecutable;
 
   assert.equal(await installCommand({}, deps), 0);
   assert.equal(deps.copiedFiles.length, 0);

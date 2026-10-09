@@ -38,6 +38,7 @@ import {
   writeDiagnostic as writeHookDiagnostic,
   type HookDependencies,
 } from "../hooks/handler.ts";
+import { assertSupportedPlatform } from "../platform/platform.ts";
 import { resolveAppPaths, type AppPaths } from "../storage/paths.ts";
 
 const HELP_TEXT = [
@@ -77,11 +78,13 @@ interface MainOverrides {
 }
 
 function hookDependencies(overrides: MainOverrides): HookDependencies {
+  const { platform } = assertSupportedPlatform(process.platform, process.arch);
   const paths =
     overrides.paths ??
-    resolveAppPaths(
-      overrides.env === undefined ? {} : { env: overrides.env },
-    );
+    resolveAppPaths({
+      platform,
+      ...(overrides.env === undefined ? {} : { env: overrides.env }),
+    });
 
   return {
     paths,
@@ -127,11 +130,13 @@ export async function main(
     return 0;
   }
 
+  const { platform } = assertSupportedPlatform(process.platform, process.arch);
   const paths =
     overrides.paths ??
-    resolveAppPaths(
-      overrides.env === undefined ? {} : { env: overrides.env },
-    );
+    resolveAppPaths({
+      platform,
+      ...(overrides.env === undefined ? {} : { env: overrides.env }),
+    });
   const output = overrides.output ?? createCliOutput();
 
   if (command.name === "install") {

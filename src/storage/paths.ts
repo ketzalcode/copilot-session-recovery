@@ -1,61 +1,32 @@
-import path from "node:path";
+import { resolveMacosPaths } from "../platform/macos.ts";
+import { resolveWindowsPaths } from "../platform/windows.ts";
 
 export interface AppPaths {
   appDir: string;
-  binDir: string;
-  installedExecutable: string;
   configFile: string;
   registryFile: string;
   lockFile: string;
   diagnosticsDir: string;
   corruptDir: string;
   copilotHookFile: string;
+  launchPlanFile: string;
+  launchPlanLockFile: string;
 }
 
-interface ResolvePathOptions {
-  env?: NodeJS.ProcessEnv;
-}
+type ResolvePathOptions =
+  | {
+      platform: "win32";
+      env?: NodeJS.ProcessEnv;
+    }
+  | {
+      platform: "darwin";
+      env?: NodeJS.ProcessEnv;
+    };
 
-export function resolveAppPaths(
-  options: ResolvePathOptions = {},
-): AppPaths {
-  const env = options.env ?? process.env;
-  const localAppData = env.LOCALAPPDATA;
-  const userProfile = env.USERPROFILE;
-
-  if (
-    typeof localAppData !== "string" ||
-    localAppData.length === 0 ||
-    typeof userProfile !== "string" ||
-    userProfile.length === 0
-  ) {
-    throw new Error("LOCALAPPDATA and USERPROFILE are required on Windows.");
+export function resolveAppPaths(options: ResolvePathOptions): AppPaths {
+  if (options.platform === "win32") {
+    return resolveWindowsPaths(options.env ?? process.env);
   }
 
-  const copilotHome =
-    typeof env.COPILOT_HOME === "string" && env.COPILOT_HOME.length > 0
-      ? env.COPILOT_HOME
-      : path.win32.join(userProfile, ".copilot");
-
-  const appDir = path.win32.join(localAppData, "copilot-session-recovery");
-  const binDir = path.win32.join(appDir, "bin");
-
-  return {
-    appDir,
-    binDir,
-    installedExecutable: path.win32.join(
-      binDir,
-      "copilot-session-recovery.exe",
-    ),
-    configFile: path.win32.join(appDir, "config.json"),
-    registryFile: path.win32.join(appDir, "sessions.json"),
-    lockFile: path.win32.join(appDir, "sessions.lock"),
-    diagnosticsDir: path.win32.join(appDir, "diagnostics"),
-    corruptDir: path.win32.join(appDir, "corrupt"),
-    copilotHookFile: path.win32.join(
-      copilotHome,
-      "hooks",
-      "copilot-session-recovery.json",
-    ),
-  };
+  return resolveMacosPaths(options.env ?? process.env);
 }

@@ -40,9 +40,13 @@ export function buildCopilotHookConfig(
   };
 }
 
+function defaultInstalledExecutable(paths: AppPaths): string {
+  return path.win32.join(paths.appDir, "bin", "copilot-session-recovery.exe");
+}
+
 export async function writeCopilotHookConfig(
   paths: AppPaths,
-  installedExecutable = paths.installedExecutable,
+  installedExecutable = defaultInstalledExecutable(paths),
 ): Promise<void> {
   await mkdir(path.dirname(paths.copilotHookFile), { recursive: true });
   await atomicWriteJson(

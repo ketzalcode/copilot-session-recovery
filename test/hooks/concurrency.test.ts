@@ -109,7 +109,7 @@ test("concurrent hook workers preserve every session update", async () => {
       USERPROFILE: userProfile,
       COPILOT_HOME: copilotHome,
     });
-    const paths = resolveAppPaths({ env });
+    const paths = resolveAppPaths({ platform: "win32", env });
 
     await Promise.all([
       mkdir(localAppData, { recursive: true }),

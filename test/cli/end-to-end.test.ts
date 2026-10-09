@@ -211,7 +211,7 @@ async function createEndToEndFixture(
   env.COPILOT_SESSION_RECOVERY_FAKE_COMMAND_PATH = fakeCommandPath;
   env.PATH = `${fakeBin};${env.PATH ?? env.Path ?? ""}`;
 
-  const paths = resolveAppPaths({ env });
+  const paths = resolveAppPaths({ platform: "win32", env });
   await mkdir(fakeBin, { recursive: true });
   await mkdir(paths.appDir, { recursive: true });
   await mkdir(path.dirname(paths.copilotHookFile), { recursive: true });

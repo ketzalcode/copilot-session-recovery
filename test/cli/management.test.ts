@@ -96,14 +96,14 @@ async function createManagementTestDependencies(
 
   const paths: AppPaths = {
     appDir: root,
-    binDir: path.join(root, "bin"),
-    installedExecutable: path.join(root, "bin", "copilot-session-recovery.exe"),
     configFile: path.join(root, "config.json"),
     registryFile: path.join(root, "sessions.json"),
     lockFile: path.join(root, "sessions.lock"),
     diagnosticsDir: path.join(root, "diagnostics"),
     corruptDir: path.join(root, "corrupt"),
     copilotHookFile: path.join(root, "copilot-session-recovery.json"),
+    launchPlanFile: path.join(root, "launch-plan.json"),
+    launchPlanLockFile: path.join(root, "launch-plan.lock"),
   };
 
   await atomicWriteJson(paths.registryFile, registry);

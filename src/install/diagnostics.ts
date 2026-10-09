@@ -96,6 +96,10 @@ export function createDiagnosticDependencies(
   };
 }
 
+function installedExecutablePath(paths: AppPaths): string {
+  return `${paths.appDir}\\bin\\copilot-session-recovery.exe`;
+}
+
 function ok(id: DiagnosticCheck["id"], summary: string, detail?: string): DiagnosticCheck {
   return detail === undefined
     ? { id, status: "ok", summary }
@@ -127,14 +131,15 @@ function error(
 async function installedExecutableCheck(
   deps: DiagnosticDependencies,
 ): Promise<DiagnosticCheck> {
-  if (await deps.fileExists(deps.paths.installedExecutable)) {
+  const installedExecutable = installedExecutablePath(deps.paths);
+  if (await deps.fileExists(installedExecutable)) {
     return ok("installed-executable", "Installed executable exists.");
   }
 
   return error(
     "installed-executable",
     "Installed executable is missing.",
-    deps.paths.installedExecutable,
+    installedExecutable,
     "Run install from the self-contained executable.",
   );
 }
@@ -145,7 +150,7 @@ async function copilotHookCheck(
   try {
     const text = await deps.readText(deps.paths.copilotHookFile);
     const parsed = JSON.parse(text) as unknown;
-    const expected = buildCopilotHookConfig(deps.paths.installedExecutable);
+    const expected = buildCopilotHookConfig(installedExecutablePath(deps.paths));
     if (JSON.stringify(parsed) === JSON.stringify(expected)) {
       return ok("copilot-hook", "Owned Copilot hook is installed.");
     }

@@ -10,15 +10,20 @@ import {
 } from "../../src/install/copilot-hooks.ts";
 import type { AppPaths } from "../../src/storage/paths.ts";
 
-function createPaths(root: string): AppPaths {
+type TestPaths = AppPaths & {
+  installedExecutable: string;
+};
+
+function createPaths(root: string): TestPaths {
+  const installedExecutable = path.join(
+    root,
+    "bin",
+    "copilot-session-recovery.exe",
+  );
+
   return {
     appDir: root,
-    binDir: path.join(root, "bin"),
-    installedExecutable: path.join(
-      root,
-      "bin",
-      "copilot-session-recovery.exe",
-    ),
+    installedExecutable,
     configFile: path.join(root, "config.json"),
     registryFile: path.join(root, "sessions.json"),
     lockFile: path.join(root, "sessions.lock"),
@@ -30,6 +35,8 @@ function createPaths(root: string): AppPaths {
       "hooks",
       "copilot-session-recovery.json",
     ),
+    launchPlanFile: path.join(root, "launch-plan.json"),
+    launchPlanLockFile: path.join(root, "launch-plan.lock"),
   };
 }
 

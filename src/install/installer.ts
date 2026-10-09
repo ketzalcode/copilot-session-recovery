@@ -69,6 +69,14 @@ function normalizedWindowsPath(filePath: string): string {
   return path.win32.normalize(filePath).replace(/[\\]+$/u, "").toLowerCase();
 }
 
+function binDir(paths: AppPaths): string {
+  return path.win32.join(paths.appDir, "bin");
+}
+
+function installedExecutable(paths: AppPaths): string {
+  return path.win32.join(binDir(paths), "copilot-session-recovery.exe");
+}
+
 async function productionFileExists(filePath: string): Promise<boolean> {
   try {
     return (await stat(filePath)).isFile();
@@ -138,7 +146,7 @@ function assertWindows(deps: InstallerDependencies): void {
 
 async function ensureInstallDirectories(deps: InstallerDependencies): Promise<void> {
   await deps.ensureDirectory(deps.paths.appDir);
-  await deps.ensureDirectory(deps.paths.binDir);
+  await deps.ensureDirectory(binDir(deps.paths));
   await deps.ensureDirectory(deps.paths.diagnosticsDir);
   await deps.ensureDirectory(deps.paths.corruptDir);
   await deps.ensureDirectory(path.dirname(deps.paths.copilotHookFile));
@@ -187,20 +195,19 @@ async function performInstall(
 
   await ensureInstallDirectories(deps);
 
+  const targetExecutable = installedExecutable(deps.paths);
+
   if (
     normalizedWindowsPath(deps.currentExecutable) !==
-    normalizedWindowsPath(deps.paths.installedExecutable)
+    normalizedWindowsPath(targetExecutable)
   ) {
-    await deps.copyFileAtomic(
-      deps.currentExecutable,
-      deps.paths.installedExecutable,
-    );
+    await deps.copyFileAtomic(deps.currentExecutable, targetExecutable);
   }
 
   await installConfiguration(options, deps);
   await installRegistry(deps);
   await deps.writeCopilotHookConfig(deps.paths);
-  await deps.ensureUserPathEntry(deps.paths.binDir);
+  await deps.ensureUserPathEntry(binDir(deps.paths));
 
   const acl = await deps.protectStateDirectory(deps.paths.appDir);
   if (!acl.protected) {
@@ -208,7 +215,7 @@ async function performInstall(
   }
 
   deps.output.out(
-    `Installed copilot-session-recovery to ${deps.paths.installedExecutable}.`,
+    `Installed copilot-session-recovery to ${targetExecutable}.`,
   );
   deps.output.out("Restart already-open terminals to observe the updated PATH.");
 }
@@ -232,17 +239,17 @@ async function performUninstall(
 ): Promise<void> {
   assertWindows(deps);
   await deps.removeFile(deps.paths.copilotHookFile);
-  await deps.removeUserPathEntry(deps.paths.binDir);
+  await deps.removeUserPathEntry(binDir(deps.paths));
   deps.scheduleSelfDelete({
     parentPid: deps.currentPid,
-    installedExecutable: deps.paths.installedExecutable,
+    installedExecutable: installedExecutable(deps.paths),
     appDir: deps.paths.appDir,
     purge: options.purge,
   });
   deps.output.out(
     options.purge
       ? `Scheduled removal of ${deps.paths.appDir} after this command exits.`
-      : `Scheduled removal of ${deps.paths.installedExecutable} after this command exits.`,
+      : `Scheduled removal of ${installedExecutable(deps.paths)} after this command exits.`,
   );
 }
 
