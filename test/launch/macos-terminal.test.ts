@@ -89,13 +89,28 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
-test("buildAppleTerminalScript stays static and includes only the broker command plus tab control", () => {
+test("buildAppleTerminalScript stays static and uses bounded polling before sending the broker command to new tabs", () => {
   const script = buildAppleTerminalScript();
 
   assert.match(script, /copilot-session-recovery launch-next/);
   assert.doesNotMatch(script, /sessionId|cwd|launcherProfile|--resume=/);
   assert.match(script, /keystroke "t" using command down/);
   assert.match(script, /set tabCount to item 1 of argv as integer/);
+  assert.match(script, /frontmost of process "Terminal"/);
+  assert.match(script, /set previousTabCount to count of tabs of front window/);
+  assert.match(script, /set previousSelectedTabIndex to index of selected tab of front window/);
+  assert.match(script, /if currentTabCount > previousTabCount then/);
+  assert.match(script, /set currentSelectedTabIndex to index of selected tab of front window/);
+  assert.match(script, /if currentSelectedTabIndex is not previousSelectedTabIndex then/);
+  assert.match(
+    script,
+    /Timed out waiting for Apple Terminal to become frontmost\./,
+  );
+  assert.match(
+    script,
+    /Timed out waiting for Apple Terminal to open a new selected tab\./,
+  );
+  assert.doesNotMatch(script, /delay 0\.2/);
   assert.equal(
     script.match(/copilot-session-recovery launch-next/g)?.length,
     2,
@@ -158,6 +173,30 @@ test("createMacTerminalLauncher rewrites known automation denials with an action
     result.stderr,
     /System Settings > Privacy & Security > Automation/,
   );
+  assert.match(result.stderr, /launch plan was preserved/i);
+  assert.equal(await pathExists(paths.launchPlanFile), true);
+  const planText = await readFile(paths.launchPlanFile, "utf8");
+  assert.match(planText, /"status": "pending"/);
+});
+
+test("createMacTerminalLauncher rewrites System Events accessibility denials with focused guidance and preserves the plan", async (t) => {
+  const paths = await createRuntimePaths(t);
+  const launcher = createMacTerminalLauncher(paths, async () => ({
+    exitCode: 1,
+    stdout: "",
+    stderr:
+      "execution error: System Events got an error: osascript is not allowed to send keystrokes. (-25211)\n",
+  }));
+
+  const result = await launcher.launch(recoveryTabs().slice(0, 1), paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(
+    result.stderr,
+    /System Settings > Privacy & Security > Accessibility/,
+  );
+  assert.doesNotMatch(result.stderr, /Privacy & Security > Automation/);
+  assert.match(result.stderr, /launch plan was preserved/i);
   assert.equal(await pathExists(paths.launchPlanFile), true);
   const planText = await readFile(paths.launchPlanFile, "utf8");
   assert.match(planText, /"status": "pending"/);

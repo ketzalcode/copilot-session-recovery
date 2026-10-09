@@ -460,6 +460,74 @@ test("macOS recovery keeps the launch plan and surfaces Automation denial guidan
     deps.outputCapture.errorText(),
     /System Settings > Privacy & Security > Automation/,
   );
+  assert.match(deps.outputCapture.errorText(), /launch plan was preserved/i);
+  assert.equal(processCalls.length, 2);
+  assert.deepEqual(processCalls[0], {
+    executable: "/usr/bin/open",
+    args: ["-Ra", "Terminal"],
+  });
+  assert.equal(processCalls[1]?.executable, "/usr/bin/osascript");
+  assert.equal(processCalls[1]?.args[0], "-e");
+  assert.equal(processCalls[1]?.args[2], "1");
+});
+
+test("macOS recovery keeps the launch plan and surfaces Accessibility guidance for System Events denials", async (t) => {
+  const processCalls: Array<{ executable: string; args: string[] }> = [];
+  let launchPlanWritten = false;
+  let launchPlanFile = "";
+  const macosTerminal = createMacosPlatformAdapter({
+    commandExists: async (executable, platform) =>
+      executable === "/usr/bin/osascript" && platform === "darwin",
+    runProcess: async (spec) => {
+      processCalls.push({
+        executable: spec.executable,
+        args: spec.args,
+      });
+      if (spec.executable === "/usr/bin/osascript") {
+        launchPlanWritten = await pathExists(launchPlanFile);
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr:
+            "execution error: System Events got an error: osascript is not allowed to send keystrokes. (-25211)\n",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    },
+  }).terminal;
+  const deps = await createRecoverTestDependencies(t, {
+    terminal: {
+      name: macosTerminal.name,
+      command: macosTerminal.command,
+      available: macosTerminal.available,
+      preview: macosTerminal.preview,
+      ...(macosTerminal.unavailableMessage === undefined
+        ? {}
+        : { unavailableMessage: macosTerminal.unavailableMessage }),
+    },
+    launch: macosTerminal.launch,
+  });
+  launchPlanFile = deps.paths.launchPlanFile;
+
+  assert.equal(
+    await expectRegistryUnchanged(deps.paths.registryFile, () =>
+      recoverSessionsCommand({ dryRun: false, yes: true }, deps),
+    ),
+    1,
+  );
+  assert.equal(deps.terminalCalls.length, 1);
+  assert.equal(deps.outputCapture.prompts.length, 0);
+  assert.equal(launchPlanWritten, true);
+  assert.equal(await pathExists(deps.paths.launchPlanFile), true);
+  assert.match(
+    deps.outputCapture.errorText(),
+    /System Settings > Privacy & Security > Accessibility/,
+  );
+  assert.match(deps.outputCapture.errorText(), /launch plan was preserved/i);
   assert.equal(processCalls.length, 2);
   assert.deepEqual(processCalls[0], {
     executable: "/usr/bin/open",

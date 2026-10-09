@@ -13,7 +13,9 @@ export const LAUNCH_NEXT_COMMAND = "copilot-session-recovery launch-next";
 
 const APPLE_TERMINAL_COMMAND = "/usr/bin/osascript";
 const APPLE_TERMINAL_AUTOMATION_MESSAGE =
-  "Apple Terminal automation was denied. Approve the prompt or allow your terminal app in System Settings > Privacy & Security > Automation, then rerun recover-sessions.";
+  "Apple Terminal automation was denied. The launch plan was preserved. Approve the prompt or allow your terminal app in System Settings > Privacy & Security > Automation, then retry the recovery launch.";
+const APPLE_TERMINAL_ACCESSIBILITY_MESSAGE =
+  "Apple Terminal tab automation was denied by System Events. The launch plan was preserved. Allow your terminal app or osascript in System Settings > Privacy & Security > Accessibility, then retry the recovery launch.";
 
 interface MacTerminalDependencies {
   commandExists?: (
@@ -33,8 +35,28 @@ function isAutomationDenied(stderr: string): boolean {
     /\(-1743\)/.test(stderr);
 }
 
-function mapAutomationDenied(result: ProcessResult): ProcessResult {
-  if (result.exitCode === 0 || !isAutomationDenied(result.stderr)) {
+function isAccessibilityDenied(stderr: string): boolean {
+  return /not allowed to send keystrokes/i.test(stderr) ||
+    /not allowed assistive access/i.test(stderr) ||
+    /access for assistive devices is disabled/i.test(stderr) ||
+    (/assistive access/i.test(stderr) && /\(-1728\)/.test(stderr)) ||
+    /\(-25211\)/.test(stderr);
+}
+
+function mapAppleTerminalFailure(result: ProcessResult): ProcessResult {
+  if (result.exitCode === 0) {
+    return result;
+  }
+
+  if (isAccessibilityDenied(result.stderr)) {
+    return {
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: APPLE_TERMINAL_ACCESSIBILITY_MESSAGE,
+    };
+  }
+
+  if (!isAutomationDenied(result.stderr)) {
     return result;
   }
 
@@ -52,23 +74,83 @@ export function buildAppleTerminalScript(): string {
     "  if tabCount < 1 then",
     "    return",
     "  end if",
+    "  my activateTerminal()",
     "  tell application \"Terminal\"",
-    "    activate",
     "    if (count of windows) is 0 then",
     `      do script "${LAUNCH_NEXT_COMMAND}"`,
-    "      delay 0.2",
     "      set openedTabs to 1",
     "    else",
     "      set openedTabs to 0",
     "    end if",
-    "    repeat while openedTabs < tabCount",
-    "      tell application \"System Events\" to keystroke \"t\" using command down",
-    "      delay 0.2",
-    `      do script "${LAUNCH_NEXT_COMMAND}" in selected tab of front window`,
-    "      set openedTabs to openedTabs + 1",
-    "    end repeat",
     "  end tell",
+    "  if openedTabs > 0 and tabCount > openedTabs then",
+    "    my waitForFrontWindowTabCount(1)",
+    "  end if",
+    "  repeat while openedTabs < tabCount",
+    "    my activateTerminal()",
+    "    tell application \"Terminal\"",
+    "      set previousTabCount to count of tabs of front window",
+    "      set previousSelectedTabIndex to index of selected tab of front window",
+    "    end tell",
+    "    tell application \"System Events\" to keystroke \"t\" using command down",
+    "    my waitForSelectedTab(previousTabCount, previousSelectedTabIndex)",
+    "    tell application \"Terminal\"",
+    `      do script "${LAUNCH_NEXT_COMMAND}" in selected tab of front window`,
+    "    end tell",
+    "    set openedTabs to openedTabs + 1",
+    "  end repeat",
     "end run",
+    "",
+    "on activateTerminal()",
+    "  tell application \"Terminal\" to activate",
+    "  my waitForTerminalFrontmost()",
+    "end activateTerminal",
+    "",
+    "on waitForTerminalFrontmost()",
+    "  repeat with attempt from 1 to 100",
+    "    tell application \"System Events\"",
+    "      if exists process \"Terminal\" then",
+    "        if frontmost of process \"Terminal\" then",
+    "          return",
+    "        end if",
+    "      end if",
+    "    end tell",
+    "    delay 0.05",
+    "  end repeat",
+    "  error \"Timed out waiting for Apple Terminal to become frontmost.\"",
+    "end waitForTerminalFrontmost",
+    "",
+    "on waitForFrontWindowTabCount(requiredTabCount)",
+    "  repeat with attempt from 1 to 100",
+    "    tell application \"Terminal\"",
+    "      if (count of windows) > 0 then",
+    "        if (count of tabs of front window) is greater than or equal to requiredTabCount then",
+    "          return",
+    "        end if",
+    "      end if",
+    "    end tell",
+    "    delay 0.05",
+    "  end repeat",
+    "  error \"Timed out waiting for Apple Terminal to open the first tab.\"",
+    "end waitForFrontWindowTabCount",
+    "",
+    "on waitForSelectedTab(previousTabCount, previousSelectedTabIndex)",
+    "  repeat with attempt from 1 to 100",
+    "    tell application \"Terminal\"",
+    "      if (count of windows) > 0 then",
+    "        set currentTabCount to count of tabs of front window",
+    "        if currentTabCount > previousTabCount then",
+    "          set currentSelectedTabIndex to index of selected tab of front window",
+    "          if currentSelectedTabIndex is not previousSelectedTabIndex then",
+    "            return",
+    "          end if",
+    "        end if",
+    "      end if",
+    "    end tell",
+    "    delay 0.05",
+    "  end repeat",
+    "  error \"Timed out waiting for Apple Terminal to open a new selected tab.\"",
+    "end waitForSelectedTab",
   ].join("\n");
 }
 
@@ -111,7 +193,7 @@ export function createMacTerminalLauncherWithDependencies(
         args: ["-e", buildAppleTerminalScript(), String(tabs.length)],
       });
 
-      return mapAutomationDenied(result);
+      return mapAppleTerminalFailure(result);
     },
   };
 }
