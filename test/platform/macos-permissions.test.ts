@@ -66,6 +66,14 @@ function defaultInode(filePath: string): number {
   return 1;
 }
 
+function strictMode(paths: AppPaths, filePath: string): number {
+  return filePath === paths.appDir ||
+      filePath === paths.diagnosticsDir ||
+      filePath === paths.corruptDir
+    ? 0o700
+    : 0o600;
+}
+
 function statsForPath(filePath: string, entry: StatsShape) {
   return {
     uid: entry.uid,
@@ -159,7 +167,7 @@ test("protectMacState rejects symlinked state paths", async () => {
     async stat(filePath) {
       return {
         uid: 501,
-        mode: filePath === paths.appDir ? 0o700 : 0o600,
+        mode: strictMode(paths, filePath),
         dev: 10,
         ino: defaultInode(filePath),
         isDirectory: () => filePath === paths.appDir,
@@ -173,7 +181,7 @@ test("protectMacState rejects symlinked state paths", async () => {
         async stat() {
           return {
             uid: 501,
-            mode: filePath === paths.appDir ? 0o700 : 0o600,
+            mode: strictMode(paths, filePath),
             dev: 10,
             ino: defaultInode(filePath),
             isDirectory: () => filePath === paths.appDir,
@@ -194,6 +202,69 @@ test("protectMacState rejects symlinked state paths", async () => {
   assert.deepEqual(chmodCalls, [[paths.appDir, 0o700]]);
 });
 
+test("protectMacState rejects a symlinked diagnostics directory", async () => {
+  const paths = createPaths();
+
+  const result = await protectMacState(paths, {
+    getuid: () => 501,
+    async lstat(filePath) {
+      if (filePath === paths.diagnosticsDir) {
+        return {
+          dev: 10,
+          ino: 4,
+          isSymbolicLink: () => true,
+        };
+      }
+
+      if (
+        filePath === paths.appDir ||
+        filePath === paths.configFile ||
+        filePath === paths.registryFile
+      ) {
+        return {
+          dev: 10,
+          ino: defaultInode(filePath),
+          isSymbolicLink: () => false,
+        };
+      }
+
+      throw missingError();
+    },
+    async stat(filePath) {
+      return {
+        uid: 501,
+        mode: strictMode(paths, filePath),
+        dev: 10,
+        ino: defaultInode(filePath),
+        isDirectory: () => filePath === paths.appDir,
+      };
+    },
+    async chmod() {
+      throw new Error("pathname chmod should not run when secure open succeeds");
+    },
+    async open(filePath) {
+      return {
+        async stat() {
+          return {
+            uid: 501,
+            mode: strictMode(paths, filePath),
+            dev: 10,
+            ino: defaultInode(filePath),
+            isDirectory: () => filePath === paths.appDir,
+          };
+        },
+        async chmod() {},
+        async close() {},
+      };
+    },
+  });
+
+  assert.deepEqual(result, {
+    protected: false,
+    detail: `${paths.diagnosticsDir} is a symbolic link.`,
+  });
+});
+
 test("protectMacState rejects state paths owned by another user", async () => {
   const paths = createPaths();
 
@@ -209,7 +280,7 @@ test("protectMacState rejects state paths owned by another user", async () => {
     async stat(filePath) {
       return {
         uid: filePath === paths.registryFile ? 777 : 501,
-        mode: filePath === paths.appDir ? 0o700 : 0o600,
+        mode: strictMode(paths, filePath),
         dev: 10,
         ino: defaultInode(filePath),
         isDirectory: () => filePath === paths.appDir,
@@ -223,7 +294,7 @@ test("protectMacState rejects state paths owned by another user", async () => {
         async stat() {
           return {
             uid: filePath === paths.registryFile ? 777 : 501,
-            mode: filePath === paths.appDir ? 0o700 : 0o600,
+            mode: strictMode(paths, filePath),
             dev: 10,
             ino: defaultInode(filePath),
             isDirectory: () => filePath === paths.appDir,
@@ -326,7 +397,7 @@ test("protectMacState rejects a path replaced between inspection and chmod verif
           async stat() {
             return {
               uid: 501,
-              mode: filePath === paths.appDir ? 0o700 : 0o600,
+              mode: strictMode(paths, filePath),
               dev: 10,
               ino: filePath === paths.appDir ? 1 : 3,
               isDirectory: () => filePath === paths.appDir,
@@ -522,7 +593,7 @@ test("checkMacStateProtection reports success for owned state paths with strict 
     async stat(filePath) {
       return {
         uid: 501,
-        mode: filePath === paths.appDir ? 0o700 : 0o600,
+        mode: strictMode(paths, filePath),
         dev: 10,
         ino: defaultInode(filePath),
         isDirectory: () => filePath === paths.appDir,
@@ -536,7 +607,7 @@ test("checkMacStateProtection reports success for owned state paths with strict 
         async stat() {
           return {
             uid: 501,
-            mode: filePath === paths.appDir ? 0o700 : 0o600,
+            mode: strictMode(paths, filePath),
             dev: 10,
             ino: defaultInode(filePath),
             isDirectory: () => filePath === paths.appDir,

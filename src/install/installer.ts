@@ -1,5 +1,4 @@
 import { mkdir, rm, stat } from "node:fs/promises";
-import path from "node:path";
 
 import type { CliOutput } from "../cli/io.ts";
 import {
@@ -33,6 +32,7 @@ export interface InstallerDependencies {
   installation: RuntimeInstallation;
   platform: PlatformAdapter;
   ensureDirectory(directory: string): Promise<void>;
+  pathExists(filePath: string): Promise<boolean>;
   fileExists(filePath: string): Promise<boolean>;
   loadConfig(filePath: string): Promise<AppConfig>;
   saveConfig(filePath: string, config: AppConfig): Promise<void>;
@@ -68,6 +68,19 @@ async function productionFileExists(filePath: string): Promise<boolean> {
   }
 }
 
+async function productionPathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (isErrnoException(error, "ENOENT")) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 export function createInstallerDependencies(
   paths: AppPaths,
   output: CliOutput,
@@ -82,6 +95,7 @@ export function createInstallerDependencies(
     ensureDirectory(directory) {
       return mkdir(directory, { recursive: true }).then(() => undefined);
     },
+    pathExists: productionPathExists,
     fileExists: productionFileExists,
     loadConfig,
     saveConfig,
@@ -100,7 +114,6 @@ async function ensureInstallDirectories(deps: InstallerDependencies): Promise<vo
   await deps.ensureDirectory(deps.paths.appDir);
   await deps.ensureDirectory(deps.paths.diagnosticsDir);
   await deps.ensureDirectory(deps.paths.corruptDir);
-  await deps.ensureDirectory(path.dirname(deps.paths.copilotHookFile));
 }
 
 async function installConfiguration(
@@ -132,11 +145,140 @@ async function installRegistry(deps: InstallerDependencies): Promise<void> {
   }
 }
 
+interface InstallSnapshot {
+  appDir: boolean;
+  configFile: boolean;
+  registryFile: boolean;
+  diagnosticsDir: boolean;
+  corruptDir: boolean;
+}
+
+async function inspectInstallState(
+  deps: InstallerDependencies,
+): Promise<InstallSnapshot> {
+  const [
+    appDir,
+    configFile,
+    registryFile,
+    diagnosticsDir,
+    corruptDir,
+  ] = await Promise.all([
+    deps.pathExists(deps.paths.appDir),
+    deps.pathExists(deps.paths.configFile),
+    deps.pathExists(deps.paths.registryFile),
+    deps.pathExists(deps.paths.diagnosticsDir),
+    deps.pathExists(deps.paths.corruptDir),
+  ]);
+
+  return {
+    appDir,
+    configFile,
+    registryFile,
+    diagnosticsDir,
+    corruptDir,
+  };
+}
+
+async function requireMacProtection(
+  deps: InstallerDependencies,
+  phase: "before setup" | "before hook activation",
+): Promise<void> {
+  const result = await deps.platform.protectState(deps.paths);
+  if (!result.protected) {
+    throw new Error(
+      `macOS state protection is required ${phase}: ${result.detail}`,
+    );
+  }
+}
+
+async function cleanupFailedMacInstall(
+  deps: InstallerDependencies,
+  snapshot: InstallSnapshot,
+  installError: unknown,
+  stateMutationStarted: boolean,
+): Promise<never> {
+  const cleanupErrors: unknown[] = [];
+
+  const attempt = async (action: () => Promise<void>): Promise<void> => {
+    try {
+      await action();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  };
+
+  await attempt(() => deps.removeFile(deps.paths.copilotHookFile));
+
+  if (stateMutationStarted) {
+    if (!snapshot.appDir) {
+      await attempt(() => deps.removeDirectory(deps.paths.appDir));
+    } else {
+      if (!snapshot.configFile) {
+        await attempt(() => deps.removeFile(deps.paths.configFile));
+      }
+      if (!snapshot.registryFile) {
+        await attempt(() => deps.removeFile(deps.paths.registryFile));
+      }
+      if (!snapshot.diagnosticsDir) {
+        await attempt(() => deps.removeDirectory(deps.paths.diagnosticsDir));
+      }
+      if (!snapshot.corruptDir) {
+        await attempt(() => deps.removeDirectory(deps.paths.corruptDir));
+      }
+    }
+  }
+
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(
+      [installError, ...cleanupErrors],
+      `${errorMessage(installError)} Cleanup also failed: ${cleanupErrors
+        .map((error) => errorMessage(error))
+        .join("; ")}`,
+    );
+  }
+
+  throw installError;
+}
+
+async function performMacInstall(
+  options: InstallOptions,
+  deps: InstallerDependencies,
+): Promise<void> {
+  const snapshot = await inspectInstallState(deps);
+  let stateMutationStarted = false;
+
+  try {
+    await requireMacProtection(deps, "before setup");
+    stateMutationStarted = true;
+    await ensureInstallDirectories(deps);
+    await installConfiguration(options, deps);
+    await installRegistry(deps);
+    await requireMacProtection(deps, "before hook activation");
+  } catch (error) {
+    await cleanupFailedMacInstall(
+      deps,
+      snapshot,
+      error,
+      stateMutationStarted,
+    );
+  }
+
+  await deps.writeCopilotHookConfig(deps.paths, deps.installation);
+}
+
 async function performInstall(
   options: InstallOptions,
   deps: InstallerDependencies,
 ): Promise<void> {
   assertPersistentInstallation(deps.installation);
+
+  if (deps.platform.id === "macos") {
+    await performMacInstall(options, deps);
+    deps.output.out(
+      "Configured copilot-session-recovery for the current npm installation.",
+    );
+    return;
+  }
 
   await ensureInstallDirectories(deps);
   await installConfiguration(options, deps);

@@ -7,22 +7,13 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { defaultConfig, saveConfig } from "../../src/config/config.ts";
-import { resolveAppPaths } from "../../src/storage/paths.ts";
 import { readRegistry } from "../../src/storage/registry.ts";
+import { createPlatformFixtureEnvironment } from "../fixtures/platform-fixture.ts";
 
 const workerCount = 24;
 const workerPath = fileURLToPath(
   new URL("../fixtures/hook-worker.ts", import.meta.url),
 );
-const PLATFORM_ENV_KEYS = [
-  ["ComSpec"],
-  ["Path", "PATH"],
-  ["PATHEXT"],
-  ["SystemRoot", "SYSTEMROOT"],
-  ["TEMP"],
-  ["TMP"],
-  ["WINDIR"],
-] as const;
 
 interface WorkerResult {
   code: number | null;
@@ -36,32 +27,16 @@ function sessionIdFor(index: number): string {
   return `${prefix}-1111-4222-8aaa-${suffix}`;
 }
 
-function startPayload(index: number): string {
+function startPayload(index: number, platform: "win32" | "darwin"): string {
   return JSON.stringify({
     sessionId: sessionIdFor(index),
     timestamp: 1_759_689_000_000 + index,
-    cwd: `C:\\src\\project-${index}`,
+    cwd:
+      platform === "win32"
+        ? `C:\\src\\project-${index}`
+        : `/Users/copilot/src/project-${index}`,
     source: "new",
   });
-}
-
-function buildWorkerEnv(overrides: Record<string, string>): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-
-  for (const aliases of PLATFORM_ENV_KEYS) {
-    for (const name of aliases) {
-      const value = process.env[name];
-      if (typeof value === "string" && value.length > 0) {
-        env[name] = value;
-        break;
-      }
-    }
-  }
-
-  return {
-    ...env,
-    ...overrides,
-  };
 }
 
 function runHookWorker(
@@ -101,27 +76,20 @@ test("concurrent hook workers preserve every session update", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cas-hook-concurrency-"));
 
   try {
-    const localAppData = path.join(root, "LocalAppData");
-    const userProfile = path.join(root, "UserProfile");
-    const copilotHome = path.join(root, "CopilotHome");
-    const env = buildWorkerEnv({
-      LOCALAPPDATA: localAppData,
-      USERPROFILE: userProfile,
-      COPILOT_HOME: copilotHome,
-    });
-    const paths = resolveAppPaths({ platform: "win32", env });
+    const fixture = createPlatformFixtureEnvironment(root);
+    const { env, paths, platform } = fixture;
 
     await Promise.all([
-      mkdir(localAppData, { recursive: true }),
-      mkdir(userProfile, { recursive: true }),
-      mkdir(copilotHome, { recursive: true }),
+      ...fixture.requiredDirectories.map((directory) =>
+        mkdir(directory, { recursive: true }),
+      ),
       mkdir(paths.appDir, { recursive: true }),
     ]);
     await saveConfig(paths.configFile, defaultConfig());
 
     const results = await Promise.all(
       Array.from({ length: workerCount }, (_, index) =>
-        runHookWorker(workerPath, env, startPayload(index + 1)),
+        runHookWorker(workerPath, env, startPayload(index + 1, platform)),
       ),
     );
 

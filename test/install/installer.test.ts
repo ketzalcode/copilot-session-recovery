@@ -16,6 +16,7 @@ import {
   uninstallCommand,
 } from "../../src/install/installer.ts";
 import type { PlatformAdapter } from "../../src/platform/platform.ts";
+import type { ProtectionResult } from "../../src/platform/platform.ts";
 import type { RuntimeInstallation } from "../../src/runtime/installation.ts";
 import type { AppPaths } from "../../src/storage/paths.ts";
 
@@ -31,9 +32,13 @@ type TestPaths = AppPaths & {
 
 interface InstallerDependencyOverrides {
   aclProtected?: boolean;
+  cleanupFailure?: Error;
   existingConfig?: AppConfig;
+  existingPaths?: string[];
   existingRegistry?: boolean;
   installation?: RuntimeInstallation;
+  platformId?: "windows" | "macos";
+  protectionResults?: ProtectionResult[];
   resolvedPaths?: AppPaths;
 }
 
@@ -41,6 +46,7 @@ type TestInstallerDependencies = Omit<InstallerDependencies, "paths"> & {
   paths: TestPaths;
   configWrites: number;
   ensuredDirectories: string[];
+  existingPaths: string[];
   jsonWrites: string[];
   protectedDirectories: string[];
   remainingFiles: string[];
@@ -89,7 +95,25 @@ function createOutputCapture(): OutputCapture {
   };
 }
 
-function createPaths(): TestPaths {
+function createPaths(platformId: "windows" | "macos" = "windows"): TestPaths {
+  if (platformId === "macos") {
+    const appDir =
+      "/Users/ruben/Library/Application Support/copilot-session-recovery";
+    return {
+      appDir,
+      configFile: path.posix.join(appDir, "config.json"),
+      registryFile: path.posix.join(appDir, "sessions.json"),
+      lockFile: path.posix.join(appDir, "sessions.lock"),
+      diagnosticsDir: path.posix.join(appDir, "diagnostics"),
+      corruptDir: path.posix.join(appDir, "corrupt"),
+      copilotHookFile:
+        "/Users/ruben/.copilot/hooks/copilot-session-recovery.json",
+      hookDirectory: "/Users/ruben/.copilot/hooks",
+      launchPlanFile: path.posix.join(appDir, "launch-plan.json"),
+      launchPlanLockFile: path.posix.join(appDir, "launch-plan.lock"),
+    };
+  }
+
   const appDir = "C:\\Users\\ruben\\AppData\\Local\\copilot-session-recovery";
   return {
     appDir,
@@ -119,11 +143,19 @@ function createPlatformAdapter(
   protectedDirectories: string[],
   overrides: InstallerDependencyOverrides = {},
 ): PlatformAdapter {
+  const platformId = overrides.platformId ?? "windows";
+  const protectionResults = [
+    ...(overrides.protectionResults ??
+      (overrides.aclProtected === false
+        ? [{ protected: false, detail: "icacls failed" }]
+        : [])),
+  ];
+
   return {
-    id: "windows",
+    id: platformId,
     terminal: {
-      name: "Windows Terminal",
-      command: "wt.exe",
+      name: platformId === "windows" ? "Windows Terminal" : "Apple Terminal",
+      command: platformId === "windows" ? "wt.exe" : "/usr/bin/osascript",
       available: async () => true,
       preview: () => "wt.exe",
       async launch() {
@@ -139,12 +171,12 @@ function createPlatformAdapter(
     },
     async protectState(appPaths) {
       protectedDirectories.push(appPaths.appDir);
-      return overrides.aclProtected === false
-        ? { protected: false, detail: "icacls failed" }
-        : {
-            protected: true,
-            detail: "State directory is protected for the current user.",
-          };
+      return (
+        protectionResults.shift() ?? {
+          protected: true,
+          detail: "State directory is protected for the current user.",
+        }
+      );
     },
     async checkStateProtection() {
       return {
@@ -165,16 +197,19 @@ function removeOne(values: string[], value: string): void {
 function createInstallerDependencies(
   overrides: InstallerDependencyOverrides = {},
 ): TestInstallerDependencies {
-  const paths = createPaths();
+  const paths = createPaths(overrides.platformId);
   const outputCapture = createOutputCapture();
   const installation = overrides.installation ?? createInstallation();
   const remainingFiles: string[] = [];
+  const existingPaths = [...(overrides.existingPaths ?? [])];
   if (overrides.existingRegistry) {
     remainingFiles.push(paths.registryFile);
+    existingPaths.push(paths.registryFile);
   }
   let savedConfig = overrides.existingConfig;
   if (savedConfig !== undefined && !remainingFiles.includes(paths.configFile)) {
     remainingFiles.push(paths.configFile);
+    existingPaths.push(paths.configFile);
   }
   const protectedDirectories: string[] = [];
 
@@ -186,6 +221,7 @@ function createInstallerDependencies(
     protectedDirectories,
     platform: createPlatformAdapter(paths, protectedDirectories, overrides),
     ensuredDirectories: [],
+    existingPaths,
     jsonWrites: [],
     remainingFiles,
     removedDirectories: [],
@@ -196,6 +232,12 @@ function createInstallerDependencies(
     writeHookInstallations: [],
     async ensureDirectory(directory) {
       deps.ensuredDirectories.push(directory);
+      if (!existingPaths.includes(directory)) {
+        existingPaths.push(directory);
+      }
+    },
+    async pathExists(filePath) {
+      return existingPaths.includes(filePath);
     },
     async fileExists(filePath) {
       return remainingFiles.includes(filePath);
@@ -215,11 +257,17 @@ function createInstallerDependencies(
       if (!remainingFiles.includes(paths.configFile)) {
         remainingFiles.push(paths.configFile);
       }
+      if (!existingPaths.includes(paths.configFile)) {
+        existingPaths.push(paths.configFile);
+      }
     },
     async writeJson(filePath) {
       deps.jsonWrites.push(filePath);
       if (!remainingFiles.includes(filePath)) {
         remainingFiles.push(filePath);
+      }
+      if (!existingPaths.includes(filePath)) {
+        existingPaths.push(filePath);
       }
     },
     async writeCopilotHookConfig(_paths, runtimeInstallation) {
@@ -228,13 +276,30 @@ function createInstallerDependencies(
       if (!remainingFiles.includes(paths.copilotHookFile)) {
         remainingFiles.push(paths.copilotHookFile);
       }
+      if (!existingPaths.includes(paths.copilotHookFile)) {
+        existingPaths.push(paths.copilotHookFile);
+      }
     },
     async removeFile(filePath) {
       deps.removedFiles.push(filePath);
       removeOne(remainingFiles, filePath);
+      removeOne(existingPaths, filePath);
     },
     async removeDirectory(directory) {
+      if (overrides.cleanupFailure !== undefined) {
+        throw overrides.cleanupFailure;
+      }
       deps.removedDirectories.push(directory);
+      for (const existingPath of [...existingPaths]) {
+        if (
+          existingPath === directory ||
+          existingPath.startsWith(`${directory}\\`) ||
+          existingPath.startsWith(`${directory}/`)
+        ) {
+          removeOne(existingPaths, existingPath);
+          removeOne(remainingFiles, existingPath);
+        }
+      }
     },
   };
 
@@ -269,7 +334,6 @@ test("install creates state directories and writes hooks for the persistent npm 
     deps.paths.appDir,
     deps.paths.diagnosticsDir,
     deps.paths.corruptDir,
-    deps.paths.hookDirectory,
   ]);
   assert.equal(deps.configWrites, 1);
   assert.equal(deps.savedConfig?.defaultProfile, "agency");
@@ -339,7 +403,7 @@ test("uninstall --purge removes the application directory after the owned hook",
   deps.remainingFiles.push(deps.paths.copilotHookFile);
 
   assert.equal(await uninstallCommand({ purge: true }, deps), 0);
-  assert.ok(deps.remainingFiles.includes(deps.paths.registryFile));
+  assert.ok(!deps.remainingFiles.includes(deps.paths.registryFile));
   assert.deepEqual(deps.removedFiles, [deps.paths.copilotHookFile]);
   assert.deepEqual(deps.removedDirectories, [deps.paths.appDir]);
 });
@@ -349,4 +413,87 @@ test("install warns but succeeds when current-user ACL protection fails", async 
 
   assert.equal(await installCommand({}, deps), 0);
   assert.match(deps.outputCapture.errorText(), /icacls failed/);
+});
+
+test("macOS install rejects an unsafe pre-existing application path before mutation or hook activation", async () => {
+  const deps = createInstallerDependencies({
+    platformId: "macos",
+    existingPaths: [
+      "/Users/ruben/Library/Application Support/copilot-session-recovery",
+      "/Users/ruben/.copilot/hooks/copilot-session-recovery.json",
+    ],
+    protectionResults: [
+      {
+        protected: false,
+        detail:
+          "/Users/ruben/Library/Application Support/copilot-session-recovery is a symbolic link.",
+      },
+    ],
+  });
+  deps.remainingFiles.push(deps.paths.copilotHookFile);
+
+  assert.equal(await installCommand({}, deps), 1);
+  assert.deepEqual(deps.ensuredDirectories, []);
+  assert.equal(deps.configWrites, 0);
+  assert.deepEqual(deps.jsonWrites, []);
+  assert.deepEqual(deps.writeHookInstallations, []);
+  assert.deepEqual(deps.removedFiles, [deps.paths.copilotHookFile]);
+  assert.deepEqual(deps.removedDirectories, []);
+  assert.ok(!deps.remainingFiles.includes(deps.paths.copilotHookFile));
+  assert.match(deps.outputCapture.errorText(), /symbolic link/i);
+});
+
+test("macOS install cleans newly created state and leaves no hook when final protection fails", async () => {
+  const deps = createInstallerDependencies({
+    platformId: "macos",
+    protectionResults: [
+      {
+        protected: true,
+        detail: "No unsafe existing state paths were found.",
+      },
+      {
+        protected: false,
+        detail: "config.json permissions could not be verified.",
+      },
+    ],
+  });
+
+  assert.equal(await installCommand({}, deps), 1);
+  assert.equal(deps.configWrites, 1);
+  assert.deepEqual(deps.jsonWrites, [deps.paths.registryFile]);
+  assert.deepEqual(deps.writeHookInstallations, []);
+  assert.deepEqual(deps.removedFiles, [deps.paths.copilotHookFile]);
+  assert.deepEqual(deps.removedDirectories, [deps.paths.appDir]);
+  assert.ok(!deps.remainingFiles.includes(deps.paths.configFile));
+  assert.ok(!deps.remainingFiles.includes(deps.paths.registryFile));
+  assert.ok(!deps.remainingFiles.includes(deps.paths.copilotHookFile));
+  assert.match(
+    deps.outputCapture.errorText(),
+    /config\.json permissions could not be verified/i,
+  );
+});
+
+test("macOS install surfaces both mandatory protection and cleanup failures", async () => {
+  const deps = createInstallerDependencies({
+    platformId: "macos",
+    cleanupFailure: new Error("cleanup denied"),
+    protectionResults: [
+      {
+        protected: true,
+        detail: "No unsafe existing state paths were found.",
+      },
+      {
+        protected: false,
+        detail: "sessions.json ownership could not be verified.",
+      },
+    ],
+  });
+
+  assert.equal(await installCommand({}, deps), 1);
+  assert.deepEqual(deps.writeHookInstallations, []);
+  assert.match(
+    deps.outputCapture.errorText(),
+    /sessions\.json ownership could not be verified/i,
+  );
+  assert.match(deps.outputCapture.errorText(), /cleanup denied/i);
 });

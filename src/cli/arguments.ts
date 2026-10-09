@@ -153,6 +153,15 @@ function parseRecoverSessions(argv: readonly string[]): ParsedCommand {
       continue;
     }
 
+    if (argument === "--discard-plan") {
+      if (seen.has(argument)) {
+        throw new Error(`Duplicate option: ${argument}`);
+      }
+      seen.add(argument);
+      options.discardPlan = true;
+      continue;
+    }
+
     if (argument === "--profile") {
       if (seen.has(argument)) {
         throw new Error(`Duplicate option: ${argument}`);
@@ -170,6 +179,15 @@ function parseRecoverSessions(argv: readonly string[]): ParsedCommand {
     }
 
     throw new Error(`Unknown option: ${argument}`);
+  }
+
+  if (
+    options.discardPlan === true &&
+    (options.dryRun || options.yes || options.profile !== undefined)
+  ) {
+    throw new Error(
+      "Option --discard-plan cannot be combined with --dry-run, --yes, or --profile.",
+    );
   }
 
   return {

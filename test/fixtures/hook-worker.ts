@@ -3,6 +3,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 import { main } from "../../src/cli/main.ts";
+import { createMacTerminalLauncherWithDependencies } from "../../src/launch/macos-terminal.ts";
+import { resolveAppPaths } from "../../src/storage/paths.ts";
 
 function pathEntries(value: string | undefined): string[] {
   if (!value) {
@@ -37,10 +39,29 @@ async function fakeCommandExists(
   executable: string,
   env: NodeJS.ProcessEnv,
 ): Promise<boolean> {
+  if (path.isAbsolute(executable)) {
+    try {
+      await access(
+        executable,
+        process.platform === "win32"
+          ? constants.F_OK
+          : constants.F_OK | constants.X_OK,
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   for (const directory of pathEntries(env.PATH ?? env.Path)) {
     for (const candidate of candidateExecutables(executable, env)) {
       try {
-        await access(path.join(directory, candidate), constants.F_OK);
+        await access(
+          path.join(directory, candidate),
+          process.platform === "win32"
+            ? constants.F_OK
+            : constants.F_OK | constants.X_OK,
+        );
         return true;
       } catch {
         // Keep searching the fake PATH.
@@ -94,17 +115,38 @@ async function fakeRunProcess(
 }
 
 const fakeCommandPath = process.env.COPILOT_SESSION_RECOVERY_FAKE_COMMAND_PATH;
-
-process.exitCode = await main(
-  process.argv.slice(2),
+const fakeCommandOverrides =
   fakeCommandPath === undefined
     ? {}
     : {
-        commandExists(executable) {
+        commandExists(executable: string) {
           return fakeCommandExists(executable, process.env);
         },
-        runProcess(spec) {
+        runProcess(spec: {
+          executable: string;
+          args: string[];
+          cwd?: string;
+          env?: NodeJS.ProcessEnv;
+        }) {
           return fakeRunProcess(fakeCommandPath, spec);
         },
-      },
+      };
+
+const terminal =
+  fakeCommandPath !== undefined && process.platform === "darwin"
+    ? createMacTerminalLauncherWithDependencies(
+        resolveAppPaths({
+          platform: "darwin",
+          env: process.env,
+        }),
+        fakeCommandOverrides,
+      )
+    : undefined;
+
+process.exitCode = await main(
+  process.argv.slice(2),
+  {
+    ...fakeCommandOverrides,
+    ...(terminal === undefined ? {} : { terminal }),
+  },
 );

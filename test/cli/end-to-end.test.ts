@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { constants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +10,12 @@ import { fileURLToPath } from "node:url";
 import { defaultConfig, parseConfig, saveConfig } from "../../src/config/config.ts";
 import { resolveAppPaths, type AppPaths } from "../../src/storage/paths.ts";
 import type { SessionRegistry } from "../../src/session/model.ts";
+import {
+  createNativeCommandShim,
+  createPlatformFixtureEnvironment,
+  prependFixturePath,
+  type FixturePlatform,
+} from "../fixtures/platform-fixture.ts";
 
 const workerPath = fileURLToPath(
   new URL("../fixtures/hook-worker.ts", import.meta.url),
@@ -17,15 +23,6 @@ const workerPath = fileURLToPath(
 const fakeCommandPath = fileURLToPath(
   new URL("../fixtures/fake-command.ts", import.meta.url),
 );
-const PLATFORM_ENV_KEYS = [
-  ["ComSpec"],
-  ["Path", "PATH"],
-  ["PATHEXT"],
-  ["SystemRoot", "SYSTEMROOT"],
-  ["TEMP"],
-  ["TMP"],
-  ["WINDIR"],
-] as const;
 const sessionA = "502ed8ca-ce22-4e92-b6a7-34eaec25c59d";
 const sessionB = "95d2d9b1-0e6a-48c1-afd6-8a7598128f43";
 const sessionC = "7a2ed8ce-7934-4bf7-913d-73dbf8c128f8";
@@ -50,22 +47,6 @@ function requireCwd(
   }
 
   return cwd;
-}
-
-function buildChildEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-
-  for (const aliases of PLATFORM_ENV_KEYS) {
-    for (const name of aliases) {
-      const value = process.env[name];
-      if (typeof value === "string" && value.length > 0) {
-        env[name] = value;
-        break;
-      }
-    }
-  }
-
-  return env;
 }
 
 function runCli(
@@ -101,22 +82,6 @@ function runCli(
       child.stdin.end();
     }
   });
-}
-
-async function createCommandShim(
-  binDir: string,
-  name: string,
-): Promise<void> {
-  await writeFile(
-    path.join(binDir, `${name}.cmd`),
-    [
-      "@echo off",
-      `set COPILOT_SESSION_RECOVERY_FAKE_NAME=${name}`,
-      `"${process.execPath}" "${fakeCommandPath}" %*`,
-      "",
-    ].join("\r\n"),
-    "utf8",
-  );
 }
 
 async function fakeLogExists(logFile: string): Promise<boolean> {
@@ -188,6 +153,7 @@ async function createEndToEndFixture(
   t: test.TestContext,
 ): Promise<{
   env: NodeJS.ProcessEnv;
+  platform: FixturePlatform;
   paths: AppPaths;
   fakeLogFile: string;
   cwdBySession: Record<string, string>;
@@ -198,29 +164,32 @@ async function createEndToEndFixture(
   });
 
   const fakeBin = path.join(root, "fake-bin");
-  const localAppData = path.join(root, "AppData", "Local");
-  const userProfile = path.join(root, "UserProfile");
-  const copilotHome = path.join(root, "CopilotHome");
   const fakeLogFile = path.join(root, "fake-commands.log");
   const sessionRoot = path.join(root, "sessions");
-  const env = buildChildEnv();
-  env.LOCALAPPDATA = localAppData;
-  env.USERPROFILE = userProfile;
-  env.COPILOT_HOME = copilotHome;
+  const platformFixture = createPlatformFixtureEnvironment(root);
+  const { env, paths, platform } = platformFixture;
   env.COPILOT_SESSION_RECOVERY_FAKE_LOG = fakeLogFile;
   env.COPILOT_SESSION_RECOVERY_FAKE_COMMAND_PATH = fakeCommandPath;
-  env.PATH = `${fakeBin};${env.PATH ?? env.Path ?? ""}`;
+  prependFixturePath(env, fakeBin);
 
-  const paths = resolveAppPaths({ platform: "win32", env });
-  await mkdir(fakeBin, { recursive: true });
+  assert.deepEqual(paths, resolveAppPaths({ platform, env }));
+  await Promise.all(
+    platformFixture.requiredDirectories.map((directory) =>
+      mkdir(directory, { recursive: true }),
+    ),
+  );
   await mkdir(paths.appDir, { recursive: true });
   await mkdir(path.dirname(paths.copilotHookFile), { recursive: true });
   await mkdir(sessionRoot, { recursive: true });
-  await Promise.all([
-    createCommandShim(fakeBin, "wt"),
-    createCommandShim(fakeBin, "copilot"),
-    createCommandShim(fakeBin, "agency"),
-  ]);
+  await Promise.all(
+    [
+      ...(platform === "win32" ? ["wt"] : []),
+      "copilot",
+      "agency",
+    ].map((name) =>
+      createNativeCommandShim(fakeBin, name, fakeCommandPath, platform),
+    ),
+  );
 
   await saveConfig(
     paths.configFile,
@@ -241,6 +210,7 @@ async function createEndToEndFixture(
 
   return {
     env,
+    platform,
     paths,
     fakeLogFile,
     cwdBySession,
@@ -338,7 +308,15 @@ test("source CLI preserves only recoverable sessions and launches Agency recover
   assert.match(result.stdout, /Dry run command:/);
   assert.match(result.stdout, new RegExp(`agency copilot --resume=${sessionB}`));
   assert.match(result.stdout, new RegExp(`agency copilot --resume=${sessionC}`));
-  assert.equal(await fakeLogExists(fixture.fakeLogFile), false);
+  if (fixture.platform === "win32") {
+    assert.equal(await fakeLogExists(fixture.fakeLogFile), false);
+  } else {
+    const dryRunInvocations = await readFakeLog(fixture.fakeLogFile);
+    assert.deepEqual(dryRunInvocations.map((entry) => entry.executable), [
+      "/usr/bin/open",
+    ]);
+    await rm(fixture.fakeLogFile, { force: true });
+  }
   assert.equal(result.stderr, "");
 
   result = await runCli(
@@ -367,13 +345,50 @@ test("source CLI preserves only recoverable sessions and launches Agency recover
   assert.deepEqual(registryAfterRecovery, registryBeforeRecovery);
 
   const invocations = await readFakeLog(fixture.fakeLogFile);
-  assert.equal(invocations.length, 1);
-  assert.equal(invocations[0]?.executable, "wt.exe");
-  const recoveryTabs = splitWindowsTerminalTabs(invocations[0]?.argv ?? []);
-  assert.deepEqual(recoveryTabs, [
-    expectedRecoveryTab(fixture.cwdBySession, sessionB),
-    expectedRecoveryTab(fixture.cwdBySession, sessionC),
-  ]);
+  if (fixture.platform === "win32") {
+    assert.equal(invocations.length, 1);
+    assert.equal(invocations[0]?.executable, "wt.exe");
+    const recoveryTabs = splitWindowsTerminalTabs(invocations[0]?.argv ?? []);
+    assert.deepEqual(recoveryTabs, [
+      expectedRecoveryTab(fixture.cwdBySession, sessionB),
+      expectedRecoveryTab(fixture.cwdBySession, sessionC),
+    ]);
+  } else {
+    assert.deepEqual(invocations.map((entry) => entry.executable), [
+      "/usr/bin/open",
+      "/usr/bin/osascript",
+    ]);
+    assert.equal(invocations[1]?.argv.at(-1), "2");
+    assert.doesNotMatch(
+      invocations[1]?.argv[1] ?? "",
+      new RegExp(`${sessionB}|${sessionC}|${requireCwd(fixture.cwdBySession, sessionB)}`),
+    );
+
+    const launchPlan = JSON.parse(
+      await readFile(fixture.paths.launchPlanFile, "utf8"),
+    ) as {
+      entries: Array<{
+        cwd: string;
+        process: { executable: string; args: string[] };
+        status: string;
+      }>;
+    };
+    assert.deepEqual(
+      launchPlan.entries.map((entry) => ({
+        cwd: entry.cwd,
+        process: entry.process,
+        status: entry.status,
+      })),
+      [sessionB, sessionC].map((sessionId) => ({
+        cwd: requireCwd(fixture.cwdBySession, sessionId),
+        process: {
+          executable: "agency",
+          args: ["copilot", `--resume=${sessionId}`],
+        },
+        status: "pending",
+      })),
+    );
+  }
 
   result = await runCli(
     ["hook", "session-end"],

@@ -6,7 +6,11 @@ import {
 } from "./process-runner.ts";
 import type { RecoveryTab } from "./recovery-plan.ts";
 import type { TerminalLauncher } from "./terminal.ts";
-import { createLaunchPlan } from "./launch-plan.ts";
+import {
+  createLaunchPlan,
+  discardLaunchPlan,
+  inspectLaunchPlan,
+} from "./launch-plan.ts";
 import type { AppPaths } from "../storage/paths.ts";
 
 export const LAUNCH_NEXT_COMMAND = "copilot-session-recovery launch-next";
@@ -165,6 +169,14 @@ export function createMacTerminalLauncherWithDependencies(
 ): TerminalLauncher {
   const lookupCommand = dependencies.commandExists ?? defaultCommandExists;
   const processRunner = dependencies.runProcess ?? runProcess;
+  const runAppleTerminal = async (tabCount: number): Promise<ProcessResult> => {
+    const result = await processRunner({
+      executable: APPLE_TERMINAL_COMMAND,
+      args: ["-e", buildAppleTerminalScript(), String(tabCount)],
+    });
+
+    return mapAppleTerminalFailure(result);
+  };
 
   return {
     name: "Apple Terminal",
@@ -181,6 +193,39 @@ export function createMacTerminalLauncherWithDependencies(
 
       return result?.exitCode === 0;
     },
+    async loadPreservedLaunch(launchPaths: AppPaths = paths) {
+      const inspection = await inspectLaunchPlan(launchPaths);
+      if (inspection === undefined) {
+        return undefined;
+      }
+
+      if (inspection.retryableCount === 0) {
+        if (inspection.launchingCount > 0) {
+          throw new Error(
+            "The preserved Apple Terminal recovery plan still has launches in progress. Retry after they finish.",
+          );
+        }
+        return undefined;
+      }
+
+      return {
+        count: inspection.retryableCount,
+        preview: tabCountPreview(inspection.retryableCount),
+        async launch() {
+          const current = await inspectLaunchPlan(launchPaths);
+          if (current === undefined || current.retryableCount === 0) {
+            throw new Error(
+              "The preserved Apple Terminal recovery plan no longer has pending or failed entries.",
+            );
+          }
+
+          return runAppleTerminal(current.retryableCount);
+        },
+      };
+    },
+    discardPreservedLaunch(launchPaths: AppPaths = paths) {
+      return discardLaunchPlan(launchPaths);
+    },
     preview(tabs: readonly RecoveryTab[]) {
       return tabCountPreview(tabs.length);
     },
@@ -193,12 +238,7 @@ export function createMacTerminalLauncherWithDependencies(
       }
 
       await createLaunchPlan(launchPaths, tabs);
-      const result = await processRunner({
-        executable: APPLE_TERMINAL_COMMAND,
-        args: ["-e", buildAppleTerminalScript(), String(tabs.length)],
-      });
-
-      return mapAppleTerminalFailure(result);
+      return runAppleTerminal(tabs.length);
     },
   };
 }

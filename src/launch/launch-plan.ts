@@ -41,6 +41,12 @@ export interface LaunchPlan {
   entries: LaunchPlanEntry[];
 }
 
+export interface LaunchPlanInspection {
+  retryableCount: number;
+  launchingCount: number;
+  launchedCount: number;
+}
+
 function isErrnoException(
   error: unknown,
   code: string,
@@ -315,6 +321,28 @@ function hasActiveEntries(plan: LaunchPlan): boolean {
   );
 }
 
+function inspectPlan(plan: LaunchPlan): LaunchPlanInspection {
+  let retryableCount = 0;
+  let launchingCount = 0;
+  let launchedCount = 0;
+
+  for (const entry of plan.entries) {
+    if (entry.status === "pending" || entry.status === "failed") {
+      retryableCount += 1;
+    } else if (entry.status === "launching") {
+      launchingCount += 1;
+    } else {
+      launchedCount += 1;
+    }
+  }
+
+  return {
+    retryableCount,
+    launchingCount,
+    launchedCount,
+  };
+}
+
 function findClaimedEntryIndex(plan: LaunchPlan, token: string): number {
   return plan.entries.findIndex(
     (entry) => entry.status === "launching" && entry.claimToken === token,
@@ -375,6 +403,38 @@ export async function createLaunchPlan(
     };
 
     await writeLaunchPlan(paths.launchPlanFile, plan);
+  });
+}
+
+export async function inspectLaunchPlan(
+  paths: AppPaths,
+): Promise<LaunchPlanInspection | undefined> {
+  return withFileLock(paths.launchPlanLockFile, async () => {
+    const plan = await readLaunchPlan(paths.launchPlanFile, {
+      allowMissing: true,
+    });
+    return plan === undefined ? undefined : inspectPlan(plan);
+  });
+}
+
+export async function discardLaunchPlan(paths: AppPaths): Promise<boolean> {
+  return withFileLock(paths.launchPlanLockFile, async () => {
+    const plan = await readLaunchPlan(paths.launchPlanFile, {
+      allowMissing: true,
+    });
+    if (plan === undefined) {
+      return false;
+    }
+
+    const inspection = inspectPlan(plan);
+    if (inspection.launchingCount > 0) {
+      throw new Error(
+        "Cannot discard the launch plan while entries are launching.",
+      );
+    }
+
+    await rm(paths.launchPlanFile, { force: true });
+    return true;
   });
 }
 

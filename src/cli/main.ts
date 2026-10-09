@@ -63,6 +63,7 @@ const HELP_TEXT = [
   "  remove <id-prefix>",
   "  prune --missing-cwd",
   "  recover-sessions [--yes] [--dry-run] [--profile <name>]",
+  "  recover-sessions --discard-plan",
   "  config show",
   "  config set default-profile <name>",
   "  config profile add <name> --executable <path> --arg <value> [--arg <value>...] [--replace]",

@@ -62,6 +62,15 @@ copilot-session-recovery recover-sessions
 Use `--yes` to skip confirmation or `--profile agency` to override the recorded
 launcher for that recovery.
 
+On macOS, an Automation denial or broker spawn failure preserves the validated
+launch plan. The next `recover-sessions` command resumes only its pending or
+failed entries and does not replace it with a newer registry or profile
+selection. To intentionally abandon that plan, run:
+
+```powershell
+copilot-session-recovery recover-sessions --discard-plan
+```
+
 ## Add an already-running session
 
 Inside the Copilot session, run `/session id` to copy its full UUID. From the
@@ -112,6 +121,7 @@ appear to work, but they are outside the supported setup contract.
 | --- | --- |
 | `copilot-session-recovery list` | List recoverable sessions. |
 | `copilot-session-recovery recover-sessions` | Reopen sessions in the platform terminal. |
+| `copilot-session-recovery recover-sessions --discard-plan` | Explicitly discard a preserved macOS recovery plan when no entry is launching. |
 | `copilot-session-recovery add <session-id>` | Adopt an already-running session. |
 | `copilot-session-recovery remove <id-prefix>` | Forget one recorded session. |
 | `copilot-session-recovery prune --missing-cwd` | Remove sessions whose directories no longer exist. |

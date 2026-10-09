@@ -85,6 +85,11 @@ function protectedPaths(paths: AppPaths): ProtectedPath[] {
     { filePath: paths.appDir, mode: 0o700 },
     { filePath: paths.configFile, mode: 0o600 },
     { filePath: paths.registryFile, mode: 0o600 },
+    { filePath: paths.diagnosticsDir, mode: 0o700 },
+    { filePath: paths.corruptDir, mode: 0o700 },
+    { filePath: paths.lockFile, mode: 0o600 },
+    { filePath: paths.launchPlanFile, mode: 0o600 },
+    { filePath: paths.launchPlanLockFile, mode: 0o600 },
   ];
 }
 

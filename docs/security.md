@@ -49,6 +49,13 @@ claims a single pending entry, changes to its validated working directory, and
 spawns the launcher with structured executable and argument arrays. Permission
 denials preserve the plan for retry instead of losing recovery state.
 
+Public retry validates the existing plan under the same lock and opens only the
+number of entries still marked `pending` or `failed`. It reuses their persisted
+structured process data. Current registry and `--profile` changes never replace
+an active plan silently. Explicit discard is available through
+`recover-sessions --discard-plan` and refuses to remove a plan with an active
+`launching` claim.
+
 ## Custom profile trust boundary
 
 Custom launcher profiles are trusted local configuration. The tool validates their schema and placeholder syntax, but it does not decide whether a local executable is safe. Add profiles only for launchers you trust.
@@ -59,7 +66,13 @@ Supported placeholders are `{sessionId}`, `{cwd}`, and `{sessionIdPrefix}`.
 
 State is stored under `%LOCALAPPDATA%\copilot-session-recovery` on Windows and `~/Library/Application Support/copilot-session-recovery` on macOS. Install applies best-effort current-user ACL protection with the current Windows SID and `icacls.exe`, and it enforces user-only `0700` / `0600` permissions on macOS. `status` and `doctor` report whether the platform check can verify current-user protection.
 
-ACL hardening is best effort. If it cannot be verified, the tool reports a warning instead of hiding the failure.
+Windows ACL hardening remains best effort and reports a warning when it cannot
+be verified. macOS protection is mandatory. Install rejects symlinked,
+foreign-owned, or unverifiable pre-existing state paths before state writes.
+After creating directories and state files, it protects and revalidates them
+before writing the Copilot hook. A mandatory protection failure exits nonzero,
+removes state created by that failed attempt, leaves no hook active, and
+surfaces any cleanup failure together with the protection error.
 
 ## Atomic writes and corrupt evidence
 

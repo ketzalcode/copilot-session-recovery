@@ -99,6 +99,15 @@ data:
 3. Each Apple Terminal tab runs the constant command `copilot-session-recovery launch-next`.
 4. `launch-next` locks the launch plan, claims one pending entry, changes to its validated working directory, and starts the launcher with structured process arguments.
 5. Launch failures stay recorded for retry, and macOS permission denials keep the plan in place.
+6. A later public `recover-sessions` call validates the preserved plan under its
+   lock and opens tabs only for entries still marked `pending` or `failed`.
+   The preserved structured working directories, executables, arguments, and
+   environment win deterministically over current registry or `--profile`
+   changes, so a different selection cannot silently replace active recovery
+   work.
+7. `recover-sessions --discard-plan` removes a validated preserved plan only
+   when no entry is currently `launching`; it is a standalone explicit action,
+   after which the operator can start a new recovery selection.
 
 ## Build and release flow
 

@@ -8,9 +8,11 @@ import { fileURLToPath } from "node:url";
 import {
   buildAppleTerminalScript,
   createMacTerminalLauncher,
+  createMacTerminalLauncherWithDependencies,
   LAUNCH_NEXT_COMMAND,
 } from "../../src/launch/macos-terminal.ts";
 import type { RecoveryTab } from "../../src/launch/recovery-plan.ts";
+import { atomicWriteJson } from "../../src/storage/atomic-json.ts";
 import type { AppPaths } from "../../src/storage/paths.ts";
 
 const runtimeRoot = path.join(
@@ -207,4 +209,80 @@ test("createMacTerminalLauncher rewrites System Events accessibility denials wit
   assert.equal(await pathExists(paths.launchPlanFile), true);
   const planText = await readFile(paths.launchPlanFile, "utf8");
   assert.match(planText, /"status": "pending"/);
+});
+
+test("createMacTerminalLauncher resumes only pending and failed preserved entries without replacing structured data", async (t) => {
+  const paths = await createRuntimePaths(t);
+  const tabs = recoveryTabs();
+  await createMacTerminalLauncher(paths, async () => ({
+    exitCode: 1,
+    stdout: "",
+    stderr: "execution error: Not authorized to send Apple events. (-1743)\n",
+  })).launch(tabs, paths);
+
+  const plan = JSON.parse(await readFile(paths.launchPlanFile, "utf8")) as {
+    schemaVersion: 1;
+    createdAt: string;
+    entries: Array<{
+      id: string;
+      cwd: string;
+      process: { executable: string; args: string[] };
+      status: string;
+      error?: string;
+    }>;
+  };
+  plan.entries[0]!.status = "launched";
+  plan.entries[1]!.status = "failed";
+  plan.entries[1]!.error = "spawn interrupted";
+  await atomicWriteJson(paths.launchPlanFile, plan);
+  const before = await readFile(paths.launchPlanFile, "utf8");
+
+  const calls: Array<{ executable: string; args: string[] }> = [];
+  const launcher = createMacTerminalLauncherWithDependencies(paths, {
+    runProcess: async (spec) => {
+      calls.push({
+        executable: spec.executable,
+        args: spec.args,
+      });
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    },
+  });
+  const preserved = await launcher.loadPreservedLaunch?.(paths);
+
+  assert.ok(preserved);
+  assert.equal(preserved.count, 1);
+  assert.equal(
+    preserved.preview,
+    `Apple Terminal tab count: 1\n${LAUNCH_NEXT_COMMAND}`,
+  );
+  assert.deepEqual(await preserved.launch(), {
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+  });
+  assert.deepEqual(calls, [
+    {
+      executable: "/usr/bin/osascript",
+      args: ["-e", buildAppleTerminalScript(), "1"],
+    },
+  ]);
+  assert.equal(await readFile(paths.launchPlanFile, "utf8"), before);
+});
+
+test("createMacTerminalLauncher exposes safe explicit plan discard", async (t) => {
+  const paths = await createRuntimePaths(t);
+  const launcher = createMacTerminalLauncher(paths, async () => ({
+    exitCode: 1,
+    stdout: "",
+    stderr: "denied",
+  }));
+  await launcher.launch(recoveryTabs().slice(0, 1), paths);
+
+  assert.equal(await launcher.discardPreservedLaunch?.(paths), true);
+  assert.equal(await pathExists(paths.launchPlanFile), false);
+  assert.equal(await launcher.discardPreservedLaunch?.(paths), false);
 });

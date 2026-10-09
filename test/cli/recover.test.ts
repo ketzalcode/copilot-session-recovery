@@ -199,6 +199,7 @@ async function createRecoverTestDependencies(
   const outputCapture = createOutputCapture(confirm);
   const baseLaunch =
     overrides.launch ??
+    overrides.terminal?.launch ??
     (async () => ({ exitCode: 0, stdout: "", stderr: "" } satisfies ProcessResult));
   const terminal: TerminalLauncher = {
     name: overrides.terminal?.name ?? "Test Terminal",
@@ -211,14 +212,20 @@ async function createRecoverTestDependencies(
       : { unavailableFix: overrides.terminal.unavailableFix }),
     available: overrides.terminal?.available ?? (async () => true),
     preview: overrides.terminal?.preview ?? (() => "test-terminal preview"),
+    ...(overrides.terminal?.loadPreservedLaunch === undefined
+      ? {}
+      : { loadPreservedLaunch: overrides.terminal.loadPreservedLaunch }),
+    ...(overrides.terminal?.discardPreservedLaunch === undefined
+      ? {}
+      : { discardPreservedLaunch: overrides.terminal.discardPreservedLaunch }),
     launch: async (tabs, launchPaths) => {
-    terminalCalls.push({ tabs, paths: launchPaths });
-    const currentRegistryState = await readFile(paths.registryFile, "utf8");
-    if (currentRegistryState !== lastRegistryState) {
-      registryWrites.push(currentRegistryState);
-      lastRegistryState = currentRegistryState;
-    }
-    return baseLaunch(tabs, launchPaths);
+      terminalCalls.push({ tabs, paths: launchPaths });
+      const currentRegistryState = await readFile(paths.registryFile, "utf8");
+      if (currentRegistryState !== lastRegistryState) {
+        registryWrites.push(currentRegistryState);
+        lastRegistryState = currentRegistryState;
+      }
+      return baseLaunch(tabs, launchPaths);
     },
   };
 
@@ -232,7 +239,7 @@ async function createRecoverTestDependencies(
     registryWrites,
     outputCapture,
     async readRegistry() {
-    return JSON.parse(await readFile(paths.registryFile, "utf8")) as SessionRegistry;
+      return JSON.parse(await readFile(paths.registryFile, "utf8")) as SessionRegistry;
     },
   };
 }
@@ -324,6 +331,24 @@ test("parseCliArguments parses recover-sessions flags and rejects invalid forms"
   assert.throws(
     () => parseCliArguments(["recover-sessions", "--wat"]),
     /Unknown option: --wat/,
+  );
+  assert.deepEqual(parseCliArguments(["recover-sessions", "--discard-plan"]), {
+    name: "recover-sessions",
+    options: {
+      dryRun: false,
+      yes: false,
+      discardPlan: true,
+    },
+  });
+  assert.throws(
+    () =>
+      parseCliArguments([
+        "recover-sessions",
+        "--discard-plan",
+        "--profile",
+        "agency",
+      ]),
+    /cannot be combined/i,
   );
 });
 
@@ -469,6 +494,117 @@ test("macOS recovery keeps the launch plan and surfaces Automation denial guidan
   assert.equal(processCalls[1]?.executable, "/usr/bin/osascript");
   assert.equal(processCalls[1]?.args[0], "-e");
   assert.equal(processCalls[1]?.args[2], "1");
+});
+
+test("macOS denial retry resumes the preserved plan and ignores a different current profile selection", async (t) => {
+  const processCalls: Array<{ executable: string; args: string[] }> = [];
+  let osascriptCalls = 0;
+  const macosTerminal = createMacosPlatformAdapter({
+    commandExists: async (executable, platform) =>
+      executable === "/usr/bin/osascript" && platform === "darwin",
+    runProcess: async (spec) => {
+      processCalls.push({
+        executable: spec.executable,
+        args: spec.args,
+      });
+      if (spec.executable === "/usr/bin/osascript") {
+        osascriptCalls += 1;
+        return osascriptCalls === 1
+          ? {
+              exitCode: 1,
+              stdout: "",
+              stderr:
+                "execution error: Not authorized to send Apple events to Terminal. (-1743)\n",
+            }
+          : {
+              exitCode: 0,
+              stdout: "",
+              stderr: "",
+            };
+      }
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    },
+  }).terminal;
+  const deps = await createRecoverTestDependencies(t, {
+    terminal: macosTerminal,
+  });
+
+  assert.equal(
+    await recoverSessionsCommand(
+      { dryRun: false, yes: true, profile: "agency" },
+      deps,
+    ),
+    1,
+  );
+  const preservedBefore = await readFile(deps.paths.launchPlanFile, "utf8");
+  assert.match(preservedBefore, /"executable": "agency"/);
+
+  assert.equal(
+    await recoverSessionsCommand(
+      { dryRun: false, yes: true, profile: "copilot" },
+      deps,
+    ),
+    0,
+  );
+  assert.equal(await readFile(deps.paths.launchPlanFile, "utf8"), preservedBefore);
+  assert.match(
+    deps.outputCapture.text(),
+    /Resuming preserved Apple Terminal recovery plan with 1 pending\/failed entry\./,
+  );
+  assert.match(
+    deps.outputCapture.text(),
+    /current registry and --profile selection are ignored/i,
+  );
+  assert.deepEqual(
+    processCalls
+      .filter((call) => call.executable === "/usr/bin/osascript")
+      .map((call) => call.args.at(-1)),
+    ["1", "1"],
+  );
+});
+
+test("recover-sessions --discard-plan removes a preserved plan without launching", async (t) => {
+  const macosTerminal = createMacosPlatformAdapter({
+    commandExists: async () => true,
+    runProcess: async (spec) =>
+      spec.executable === "/usr/bin/open"
+        ? {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          }
+        : {
+            exitCode: 1,
+            stdout: "",
+            stderr: "denied",
+          },
+  }).terminal;
+  const deps = await createRecoverTestDependencies(t, {
+    terminal: macosTerminal,
+  });
+
+  assert.equal(
+    await recoverSessionsCommand({ dryRun: false, yes: true }, deps),
+    1,
+  );
+  assert.equal(await pathExists(deps.paths.launchPlanFile), true);
+
+  assert.equal(
+    await recoverSessionsCommand(
+      { dryRun: false, yes: false, discardPlan: true },
+      deps,
+    ),
+    0,
+  );
+  assert.equal(await pathExists(deps.paths.launchPlanFile), false);
+  assert.match(
+    deps.outputCapture.text(),
+    /Discarded the preserved Apple Terminal recovery plan\./,
+  );
 });
 
 test("macOS recovery keeps the launch plan and surfaces Accessibility guidance for System Events denials", async (t) => {

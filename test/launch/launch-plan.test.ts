@@ -9,7 +9,9 @@ import {
   claimNextLaunch,
   completeLaunch,
   createLaunchPlan,
+  discardLaunchPlan,
   failLaunch,
+  inspectLaunchPlan,
   type LaunchPlan,
   type LaunchPlanEntry,
 } from "../../src/launch/launch-plan.ts";
@@ -250,6 +252,91 @@ test("claimNextLaunch retries failed entries only after pending entries", async 
   assert.equal(first?.entry.id, "pending-entry");
   assert.equal(first?.entry.cwd, "/Users/ruben/src/pending-project");
   assert.equal(second?.entry.id, "failed-entry");
+});
+
+test("inspectLaunchPlan counts only pending and failed entries as retryable", async (t) => {
+  const paths = await createRuntimePaths(t);
+  await atomicWriteJson(
+    paths.launchPlanFile,
+    launchPlan(
+      launchPlanEntry("already-launched", "launched"),
+      launchPlanEntry("pending-entry", "pending"),
+      launchPlanEntry("failed-entry", "failed"),
+    ),
+  );
+
+  assert.deepEqual(await inspectLaunchPlan(paths), {
+    retryableCount: 2,
+    launchingCount: 0,
+    launchedCount: 1,
+  });
+
+  const after = await readLaunchPlan(paths);
+  assert.deepEqual(
+    after.entries.map((entry) => ({
+      id: entry.id,
+      cwd: entry.cwd,
+      process: entry.process,
+      status: entry.status,
+      error: entry.error,
+    })),
+    [
+      {
+        id: "already-launched",
+        cwd: "/Users/ruben/src/project",
+        process: {
+          executable: "copilot",
+          args: ["--resume=already-launched"],
+        },
+        status: "launched",
+        error: undefined,
+      },
+      {
+        id: "pending-entry",
+        cwd: "/Users/ruben/src/project",
+        process: {
+          executable: "copilot",
+          args: ["--resume=pending-entry"],
+        },
+        status: "pending",
+        error: undefined,
+      },
+      {
+        id: "failed-entry",
+        cwd: "/Users/ruben/src/project",
+        process: {
+          executable: "copilot",
+          args: ["--resume=failed-entry"],
+        },
+        status: "failed",
+        error: "launch failed",
+      },
+    ],
+  );
+});
+
+test("discardLaunchPlan removes a validated retryable plan but refuses active claims", async (t) => {
+  const paths = await createRuntimePaths(t);
+  await atomicWriteJson(
+    paths.launchPlanFile,
+    launchPlan(launchPlanEntry("pending-entry", "pending")),
+  );
+
+  assert.equal(await discardLaunchPlan(paths), true);
+  assert.equal(await pathExists(paths.launchPlanFile), false);
+  assert.equal(await discardLaunchPlan(paths), false);
+
+  await atomicWriteJson(
+    paths.launchPlanFile,
+    launchPlan(launchPlanEntry("launching-entry", "launching")),
+  );
+  const before = await readLaunchPlanText(paths);
+
+  await assert.rejects(
+    discardLaunchPlan(paths),
+    /cannot discard.*launching/i,
+  );
+  assert.equal(await readLaunchPlanText(paths), before);
 });
 
 test("completeLaunch rejects stale or unknown claim tokens", async (t) => {

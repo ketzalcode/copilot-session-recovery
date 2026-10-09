@@ -32,6 +32,7 @@ export interface RecoverOptions {
   dryRun: boolean;
   yes: boolean;
   profile?: string;
+  discardPlan?: boolean;
 }
 
 export interface AddSessionOptions {
@@ -125,16 +126,44 @@ async function persistProfileUpdates(
   });
 }
 
+function terminalResult(
+  result: Awaited<ReturnType<TerminalLauncher["launch"]>>,
+  terminal: TerminalLauncher,
+  output: CliOutput,
+): number {
+  if (result.exitCode === 0) {
+    return 0;
+  }
+
+  output.error(
+    result.stderr.trim().length > 0
+      ? result.stderr.trimEnd()
+      : `${terminal.name} exited with code ${result.exitCode}.`,
+  );
+  return 1;
+}
+
 export async function recoverSessionsCommand(
   options: RecoverOptions,
   deps: RecoverDependencies,
 ): Promise<number> {
   try {
-    const config = await loadConfig(deps.paths.configFile);
-    const registry = await readRegistry(
-      deps.paths.registryFile,
-      deps.paths.corruptDir,
-    );
+    if (options.discardPlan === true) {
+      if (deps.terminal.discardPreservedLaunch === undefined) {
+        deps.output.error(
+          `${deps.terminal.name} does not use a preserved recovery plan.`,
+        );
+        return 1;
+      }
+
+      const discarded = await deps.terminal.discardPreservedLaunch(deps.paths);
+      deps.output.out(
+        discarded
+          ? `Discarded the preserved ${deps.terminal.name} recovery plan.`
+          : `No preserved ${deps.terminal.name} recovery plan exists.`,
+      );
+      return 0;
+    }
 
     if (!(await deps.terminal.available())) {
       deps.output.error(
@@ -143,6 +172,41 @@ export async function recoverSessionsCommand(
       );
       return 1;
     }
+
+    const preserved = await deps.terminal.loadPreservedLaunch?.(deps.paths);
+    if (preserved !== undefined) {
+      const entryLabel = preserved.count === 1 ? "entry" : "entries";
+      deps.output.out(
+        `Resuming preserved ${deps.terminal.name} recovery plan with ${preserved.count} pending/failed ${entryLabel}. Current registry and --profile selection are ignored until this plan completes or is discarded with recover-sessions --discard-plan.`,
+      );
+
+      if (options.dryRun) {
+        deps.output.out(`Dry run command:\n${preserved.preview}`);
+        return 0;
+      }
+
+      if (
+        !options.yes &&
+        !(await deps.output.confirm(
+          `Resume the preserved recovery plan in ${deps.terminal.name}?`,
+        ))
+      ) {
+        deps.output.out("Recovery cancelled.");
+        return 0;
+      }
+
+      return terminalResult(
+        await preserved.launch(),
+        deps.terminal,
+        deps.output,
+      );
+    }
+
+    const config = await loadConfig(deps.paths.configFile);
+    const registry = await readRegistry(
+      deps.paths.registryFile,
+      deps.paths.corruptDir,
+    );
 
     const plan = await buildRecoveryPlan(registry, config, {
       profileOverride: options.profile,
@@ -178,17 +242,7 @@ export async function recoverSessionsCommand(
 
     await persistProfileUpdates(deps.paths, plan.profileUpdates);
     const result = await deps.terminal.launch(plan.tabs, deps.paths);
-
-    if (result.exitCode !== 0) {
-      deps.output.error(
-        result.stderr.trim().length > 0
-          ? result.stderr.trimEnd()
-          : `${deps.terminal.name} exited with code ${result.exitCode}.`,
-      );
-      return 1;
-    }
-
-    return 0;
+    return terminalResult(result, deps.terminal, deps.output);
   } catch (error) {
     deps.output.error(errorMessage(error));
     return 1;

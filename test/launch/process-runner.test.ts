@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -75,14 +75,27 @@ test("commandExists rejects directories for absolute executables", async () => {
 
 test("commandExists accepts an existing absolute executable file without lookup", async () => {
   const directory = runtimePath("file");
-  const executable = path.join(directory, "copilot.cmd");
+  const platform = process.platform === "darwin" ? "darwin" : "win32";
+  const executable = path.join(
+    directory,
+    platform === "win32" ? "copilot.cmd" : "copilot",
+  );
 
   try {
     await mkdir(directory, { recursive: true });
-    await writeFile(executable, "@echo off\r\necho ok\r\n", "utf8");
+    await writeFile(
+      executable,
+      platform === "win32"
+        ? "@echo off\r\necho ok\r\n"
+        : "#!/bin/sh\nexit 0\n",
+      "utf8",
+    );
+    if (platform === "darwin") {
+      await chmod(executable, 0o755);
+    }
 
     assert.equal(
-      await commandExists(executable, "win32", async () => {
+      await commandExists(executable, platform, async () => {
         throw new Error("lookup should not run for absolute executables");
       }),
       true,

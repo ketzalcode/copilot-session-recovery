@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import {
   assertPersistentInstallation,
@@ -7,26 +9,35 @@ import {
 } from "../../src/runtime/installation.ts";
 
 test("resolveRuntimeInstallation decodes the bundled CLI entry from a file URL", () => {
+  const nodeExecutable =
+    process.platform === "win32"
+      ? "C:\\Program Files\\nodejs\\node.exe"
+      : "/opt/homebrew/bin/node";
+  const cliEntry =
+    process.platform === "win32"
+      ? "C:\\npm\\node_modules\\copilot-session-recovery\\dist\\copilot-session-recovery.mjs"
+      : "/usr/local/lib/node_modules/copilot-session-recovery/dist/copilot-session-recovery.mjs";
+
   assert.deepEqual(
     resolveRuntimeInstallation({
-      execPath: "C:\\Program Files\\nodejs\\node.exe",
-      moduleUrl:
-        "file:///C:/npm/node_modules/copilot-session-recovery/dist/copilot-session-recovery.mjs",
+      execPath: nodeExecutable,
+      moduleUrl: pathToFileURL(cliEntry).href,
     }),
     {
-      nodeExecutable: "C:\\Program Files\\nodejs\\node.exe",
-      cliEntry:
-        "C:\\npm\\node_modules\\copilot-session-recovery\\dist\\copilot-session-recovery.mjs",
+      nodeExecutable,
+      cliEntry,
     },
   );
 });
 
 test("resolveRuntimeInstallation rejects non-absolute runtime paths", () => {
+  const absoluteEntry = path.resolve("copilot-session-recovery.mjs");
+
   assert.throws(
     () =>
       resolveRuntimeInstallation({
         execPath: "node.exe",
-        moduleUrl: "file:///C:/npm/copilot-session-recovery.mjs",
+        moduleUrl: pathToFileURL(absoluteEntry).href,
       }),
     /absolute/i,
   );
@@ -34,18 +45,22 @@ test("resolveRuntimeInstallation rejects non-absolute runtime paths", () => {
 
 test("resolveRuntimeInstallation falls back to argv[1] when moduleUrl is unavailable", () => {
   const originalArgv1 = process.argv[1];
-  process.argv[1] =
-    "C:\\npm\\node_modules\\copilot-session-recovery\\dist\\copilot-session-recovery.mjs";
+  const cliEntry = path.resolve(
+    "node_modules",
+    "copilot-session-recovery",
+    "dist",
+    "copilot-session-recovery.mjs",
+  );
+  process.argv[1] = cliEntry;
 
   try {
     assert.deepEqual(
       resolveRuntimeInstallation({
-        execPath: "C:\\Program Files\\nodejs\\node.exe",
+        execPath: process.execPath,
       }),
       {
-        nodeExecutable: "C:\\Program Files\\nodejs\\node.exe",
-        cliEntry:
-          "C:\\npm\\node_modules\\copilot-session-recovery\\dist\\copilot-session-recovery.mjs",
+        nodeExecutable: process.execPath,
+        cliEntry,
       },
     );
   } finally {

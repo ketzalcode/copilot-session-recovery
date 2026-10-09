@@ -183,6 +183,47 @@ copilot-session-recovery recover-sessions
 The launch plan stays on disk so the sessions remain recoverable while you fix
 permissions.
 
+The next `copilot-session-recovery recover-sessions` call validates and resumes
+that plan before reading a new registry/profile selection. It opens only the
+entries still marked pending or failed and keeps their original structured
+working directories and process arguments. If the registry changed or you pass
+a different `--profile`, the command states that the preserved plan wins; it
+does not silently replace the plan.
+
+Preview the preserved retry without opening tabs:
+
+```powershell
+copilot-session-recovery recover-sessions --dry-run
+```
+
+To intentionally abandon the preserved selection, run this standalone command:
+
+```powershell
+copilot-session-recovery recover-sessions --discard-plan
+```
+
+Discard validates the plan under its lock and refuses while an entry is
+currently launching. After a successful discard, rerun `recover-sessions` to
+build a new plan from the current registry and profile selection.
+
+## macOS install rejects or cannot protect the application path
+
+macOS setup requires the application directory and state files to be owned by
+the current user, non-symlinked, and verifiably restricted to user-only modes.
+An unsafe pre-existing application path is rejected before state writes or hook
+activation.
+
+If protection fails after setup created new state, install exits nonzero,
+removes state created by that failed attempt, and does not activate the Copilot
+hook. Cleanup failures are reported with the original protection error. Inspect
+the named path and ownership; do not replace the application directory with a
+symlink. After correcting the path, rerun:
+
+```powershell
+copilot-session-recovery install
+copilot-session-recovery doctor
+```
+
 ## Recovery preview works but launch fails
 
 Run:
