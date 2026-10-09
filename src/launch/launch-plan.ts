@@ -242,11 +242,22 @@ function parseLaunchPlan(value: unknown): LaunchPlan {
     parseLaunchPlanEntry(entry, `Launch plan entry ${index}`),
   );
   const ids = new Set<string>();
+  const activeClaimTokens = new Set<string>();
   for (const entry of entries) {
     if (ids.has(entry.id)) {
       throw new Error(`Launch plan entry id ${entry.id} must be unique.`);
     }
     ids.add(entry.id);
+
+    if (entry.status === "launching") {
+      const claimToken = entry.claimToken!;
+      if (activeClaimTokens.has(claimToken)) {
+        throw new Error(
+          "Launch plan launching claim tokens must be unique.",
+        );
+      }
+      activeClaimTokens.add(claimToken);
+    }
   }
 
   return {

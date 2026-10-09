@@ -272,6 +272,47 @@ test("completeLaunch rejects stale or unknown claim tokens", async (t) => {
   );
 });
 
+test("completeLaunch keeps claim tokens single-use after one successful completion", async (t) => {
+  const paths = await createRuntimePaths(t);
+  await createLaunchPlan(paths, [
+    recoveryTab(),
+    recoveryTab({
+      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+      cwd: "/Users/ruben/src/second-project",
+      process: {
+        executable: "copilot",
+        args: ["--resume=de305d54-75b4-431b-adb2-eb6b9e546014"],
+      },
+    }),
+  ]);
+
+  const first = await claimNextLaunch(paths);
+  const second = await claimNextLaunch(paths);
+  assert.ok(first);
+  assert.ok(second);
+
+  await completeLaunch(paths, first.token);
+
+  const plan = await readLaunchPlan(paths);
+  assert.deepEqual(
+    plan.entries.map((entry) => entry.status),
+    ["launched", "launching"],
+  );
+  assert.equal(plan.entries[1]?.claimToken, second.token);
+
+  await assert.rejects(
+    completeLaunch(paths, first.token),
+    /stale or unknown/i,
+  );
+
+  const afterRejectedRetry = await readLaunchPlan(paths);
+  assert.deepEqual(
+    afterRejectedRetry.entries.map((entry) => entry.status),
+    ["launched", "launching"],
+  );
+  assert.equal(afterRejectedRetry.entries[1]?.claimToken, second.token);
+});
+
 test("failLaunch clears the claim token, records the error, and leaves the entry retryable", async (t) => {
   const paths = await createRuntimePaths(t);
   await createLaunchPlan(paths, [recoveryTab()]);
@@ -323,6 +364,19 @@ test("claimNextLaunch rejects invalid stored plans without replacing them", asyn
         }),
       ),
       pattern: /absolute working directory/i,
+    },
+    {
+      label: "duplicate-active-claim-token",
+      value: launchPlan(
+        launchPlanEntry("launching-entry-one", "launching", {
+          claimToken: "shared-claim-token",
+        }),
+        launchPlanEntry("launching-entry-two", "launching", {
+          claimToken: "shared-claim-token",
+          cwd: "/Users/ruben/src/second-project",
+        }),
+      ),
+      pattern: /claim tokens must be unique/i,
     },
   ];
 
