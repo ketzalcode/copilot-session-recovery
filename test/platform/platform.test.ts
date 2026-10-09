@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createMacosPlatformAdapter } from "../../src/platform/macos.ts";
 import {
   assertSupportedPlatform,
   createPlatformAdapter,
 } from "../../src/platform/platform.ts";
+import { createWindowsPlatformAdapter } from "../../src/platform/windows.ts";
 
 test("accepts only the supported platform and architecture matrix", () => {
   assert.deepEqual(assertSupportedPlatform("win32", "x64"), {
@@ -50,4 +52,97 @@ test("creates a macOS adapter with the expected contract", () => {
     }).launchPlanFile,
     "/Users/ruben/Library/Application Support/copilot-session-recovery/launch-plan.json",
   );
+});
+
+test("Windows adapter exposes state protection and terminal checks", async () => {
+  const paths = createPlatformAdapter("win32", "x64").resolvePaths({
+    LOCALAPPDATA: "C:\\Users\\ruben\\AppData\\Local",
+    USERPROFILE: "C:\\Users\\ruben",
+  });
+  const commandChecks: Array<{ executable: string; platform: "win32" | "darwin" }> = [];
+  const adapter = createWindowsPlatformAdapter({
+    commandExists: async (executable, platform) => {
+      commandChecks.push({ executable, platform });
+      return true;
+    },
+    protectState: async (receivedPaths) => {
+      assert.equal(receivedPaths, paths);
+      return { protected: true, detail: "protected" };
+    },
+    checkStateProtection: async (receivedPaths) => {
+      assert.equal(receivedPaths, paths);
+      return { protected: true, detail: "checked" };
+    },
+  });
+
+  assert.deepEqual(await adapter.protectState(paths), {
+    protected: true,
+    detail: "protected",
+  });
+  assert.deepEqual(await adapter.checkStateProtection(paths), {
+    protected: true,
+    detail: "checked",
+  });
+  assert.equal(await adapter.terminalAvailable(), true);
+  assert.deepEqual(commandChecks, [
+    {
+      executable: "wt.exe",
+      platform: "win32",
+    },
+  ]);
+});
+
+test("macOS adapter checks Apple Terminal with structured probes", async () => {
+  const paths = createPlatformAdapter("darwin", "x64").resolvePaths({
+    HOME: "/Users/ruben",
+  });
+  const commandChecks: Array<{ executable: string; platform: "win32" | "darwin" }> = [];
+  const processCalls: Array<{ executable: string; args: string[] }> = [];
+  const adapter = createMacosPlatformAdapter({
+    commandExists: async (executable, platform) => {
+      commandChecks.push({ executable, platform });
+      return true;
+    },
+    runProcess: async (spec) => {
+      processCalls.push({
+        executable: spec.executable,
+        args: spec.args,
+      });
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    },
+    protectState: async (receivedPaths) => {
+      assert.equal(receivedPaths, paths);
+      return { protected: true, detail: "protected" };
+    },
+    checkStateProtection: async (receivedPaths) => {
+      assert.equal(receivedPaths, paths);
+      return { protected: true, detail: "checked" };
+    },
+  });
+
+  assert.deepEqual(await adapter.protectState(paths), {
+    protected: true,
+    detail: "protected",
+  });
+  assert.deepEqual(await adapter.checkStateProtection(paths), {
+    protected: true,
+    detail: "checked",
+  });
+  assert.equal(await adapter.terminalAvailable(), true);
+  assert.deepEqual(commandChecks, [
+    {
+      executable: "/usr/bin/osascript",
+      platform: "darwin",
+    },
+  ]);
+  assert.deepEqual(processCalls, [
+    {
+      executable: "/usr/bin/open",
+      args: ["-Ra", "Terminal"],
+    },
+  ]);
 });

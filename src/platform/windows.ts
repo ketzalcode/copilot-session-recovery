@@ -1,6 +1,12 @@
 import path from "node:path";
 
 import type { PlatformAdapter } from "./platform.ts";
+import {
+  checkStateDirectoryProtection,
+  protectStateDirectory,
+  type AclResult,
+} from "./windows-permissions.ts";
+import { commandExists } from "../launch/process-runner.ts";
 import type { AppPaths } from "../storage/paths.ts";
 
 function resolveCopilotHome(env: NodeJS.ProcessEnv): string {
@@ -49,10 +55,32 @@ export function resolveWindowsPaths(env: NodeJS.ProcessEnv): AppPaths {
   };
 }
 
-export function createWindowsPlatformAdapter(): PlatformAdapter {
+interface WindowsPlatformDependencies {
+  commandExists?: (
+    executable: string,
+    platform: "win32" | "darwin",
+  ) => Promise<boolean>;
+  protectState?: (paths: AppPaths) => Promise<AclResult>;
+  checkStateProtection?: (paths: AppPaths) => Promise<AclResult>;
+}
+
+export function createWindowsPlatformAdapter(
+  dependencies: WindowsPlatformDependencies = {},
+): PlatformAdapter {
+  const lookupCommand = dependencies.commandExists ?? commandExists;
+  const protectState =
+    dependencies.protectState ??
+    ((paths: AppPaths) => protectStateDirectory(paths.appDir));
+  const checkStateProtection =
+    dependencies.checkStateProtection ??
+    ((paths: AppPaths) => checkStateDirectoryProtection(paths.appDir));
+
   return {
     id: "windows",
     terminalName: "Windows Terminal",
     resolvePaths: resolveWindowsPaths,
+    protectState,
+    checkStateProtection,
+    terminalAvailable: () => lookupCommand("wt.exe", "win32"),
   };
 }

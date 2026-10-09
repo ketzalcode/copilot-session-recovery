@@ -40,11 +40,43 @@ export const runProcess: ProcessRunner = async (spec) =>
     );
   });
 
+function defaultCommandPlatform(): "win32" | "darwin" {
+  return process.platform === "darwin" ? "darwin" : "win32";
+}
+
+function isPathLikeExecutable(
+  executable: string,
+  platform: "win32" | "darwin",
+): boolean {
+  if (platform === "win32") {
+    return path.win32.isAbsolute(executable) || /[\\/]/.test(executable);
+  }
+
+  return path.posix.isAbsolute(executable) || /[\\/]/.test(executable);
+}
+
+export function commandExists(
+  executable: string,
+  platform: "win32" | "darwin",
+  runner?: ProcessRunner,
+): Promise<boolean>;
 export async function commandExists(
   executable: string,
+  runner?: ProcessRunner,
+): Promise<boolean>;
+export async function commandExists(
+  executable: string,
+  platformOrRunner: "win32" | "darwin" | ProcessRunner = defaultCommandPlatform(),
   runner: ProcessRunner = runProcess,
 ): Promise<boolean> {
-  if (path.win32.isAbsolute(executable) || /[\\/]/.test(executable)) {
+  const platform =
+    typeof platformOrRunner === "function"
+      ? defaultCommandPlatform()
+      : platformOrRunner;
+  const processRunner =
+    typeof platformOrRunner === "function" ? platformOrRunner : runner;
+
+  if (isPathLikeExecutable(executable, platform)) {
     try {
       const details = await stat(executable);
       if (!details.isFile()) {
@@ -68,10 +100,12 @@ export async function commandExists(
     }
   }
 
-  const result = await runner({
-    executable: "where.exe",
-    args: [executable],
-  }).catch(() => undefined);
+  const lookup =
+    platform === "win32"
+      ? { executable: "where.exe", args: [executable] }
+      : { executable: "/usr/bin/which", args: [executable] };
+
+  const result = await processRunner(lookup).catch(() => undefined);
 
   return result?.exitCode === 0;
 }

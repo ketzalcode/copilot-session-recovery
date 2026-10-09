@@ -20,7 +20,10 @@ import {
 import { emptyRegistry } from "../session/lifecycle.ts";
 import { atomicWriteJson } from "../storage/atomic-json.ts";
 import type { AppPaths } from "../storage/paths.ts";
-import { protectStateDirectory, type AclResult } from "./acl.ts";
+import {
+  protectStateDirectory,
+  type AclResult,
+} from "../platform/windows-permissions.ts";
 import { writeCopilotHookConfig } from "./copilot-hooks.ts";
 import { scheduleSelfDelete, type SelfDeleteRequest } from "./self-delete.ts";
 import { ensureUserPathEntry, removeUserPathEntry } from "./user-path.ts";

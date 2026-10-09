@@ -11,6 +11,14 @@ export interface PlatformAdapter {
   readonly id: "windows" | "macos";
   readonly terminalName: "Windows Terminal" | "Apple Terminal";
   resolvePaths(env: NodeJS.ProcessEnv): AppPaths;
+  protectState(paths: AppPaths): Promise<ProtectionResult>;
+  checkStateProtection(paths: AppPaths): Promise<ProtectionResult>;
+  terminalAvailable(): Promise<boolean>;
+}
+
+export interface ProtectionResult {
+  protected: boolean;
+  detail: string;
 }
 
 export function assertSupportedPlatform(

@@ -1,6 +1,16 @@
 import path from "node:path";
 
 import type { PlatformAdapter } from "./platform.ts";
+import {
+  checkMacStateProtection,
+  protectMacState,
+  type ProtectionResult,
+} from "./macos-permissions.ts";
+import {
+  commandExists,
+  runProcess,
+  type ProcessRunner,
+} from "../launch/process-runner.ts";
 import type { AppPaths } from "../storage/paths.ts";
 
 function resolveCopilotHome(env: NodeJS.ProcessEnv): string {
@@ -47,10 +57,42 @@ export function resolveMacosPaths(env: NodeJS.ProcessEnv): AppPaths {
   };
 }
 
-export function createMacosPlatformAdapter(): PlatformAdapter {
+interface MacosPlatformDependencies {
+  commandExists?: (
+    executable: string,
+    platform: "win32" | "darwin",
+  ) => Promise<boolean>;
+  runProcess?: ProcessRunner;
+  protectState?: (paths: AppPaths) => Promise<ProtectionResult>;
+  checkStateProtection?: (paths: AppPaths) => Promise<ProtectionResult>;
+}
+
+export function createMacosPlatformAdapter(
+  dependencies: MacosPlatformDependencies = {},
+): PlatformAdapter {
+  const lookupCommand = dependencies.commandExists ?? commandExists;
+  const processRunner = dependencies.runProcess ?? runProcess;
+  const protectState = dependencies.protectState ?? protectMacState;
+  const checkStateProtection =
+    dependencies.checkStateProtection ?? checkMacStateProtection;
+
   return {
     id: "macos",
     terminalName: "Apple Terminal",
     resolvePaths: resolveMacosPaths,
+    protectState,
+    checkStateProtection,
+    async terminalAvailable() {
+      if (!(await lookupCommand("/usr/bin/osascript", "darwin"))) {
+        return false;
+      }
+
+      const result = await processRunner({
+        executable: "/usr/bin/open",
+        args: ["-Ra", "Terminal"],
+      }).catch(() => undefined);
+
+      return result?.exitCode === 0;
+    },
   };
 }

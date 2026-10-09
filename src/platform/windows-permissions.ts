@@ -66,7 +66,12 @@ async function currentUserSid(runner: ProcessRunner): Promise<string | AclResult
 
   if (result.exitCode !== 0) {
     return failure(
-      processErrorDetail("Resolving current user SID", result.exitCode, result.stderr, result.stdout),
+      processErrorDetail(
+        "Resolving current user SID",
+        result.exitCode,
+        result.stderr,
+        result.stdout,
+      ),
     );
   }
 
@@ -112,7 +117,12 @@ export async function protectStateDirectory(
 
     if (result.exitCode !== 0) {
       return failure(
-        processErrorDetail("Protecting state directory", result.exitCode, result.stderr, result.stdout),
+        processErrorDetail(
+          "Protecting state directory",
+          result.exitCode,
+          result.stderr,
+          result.stdout,
+        ),
       );
     }
 
@@ -142,7 +152,12 @@ export async function checkStateDirectoryProtection(
 
     if (result.exitCode !== 0) {
       return failure(
-        processErrorDetail("Inspecting state directory ACL", result.exitCode, result.stderr, result.stdout),
+        processErrorDetail(
+          "Inspecting state directory ACL",
+          result.exitCode,
+          result.stderr,
+          result.stdout,
+        ),
       );
     }
 

@@ -14,7 +14,7 @@ import {
 import {
   checkStateDirectoryProtection,
   type AclResult,
-} from "./acl.ts";
+} from "../platform/windows-permissions.ts";
 import { buildCopilotHookConfig } from "./copilot-hooks.ts";
 import { readFile, stat } from "node:fs/promises";
 

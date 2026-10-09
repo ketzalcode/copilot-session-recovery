@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ProcessResult, ProcessSpec } from "../../src/launch/process-runner.ts";
-import { protectStateDirectory } from "../../src/install/acl.ts";
+import type {
+  ProcessResult,
+  ProcessSpec,
+} from "../../src/launch/process-runner.ts";
+import { protectStateDirectory } from "../../src/platform/windows-permissions.ts";
 
 test("protectStateDirectory grants only the current user SID recursively", async () => {
   const calls: ProcessSpec[] = [];
