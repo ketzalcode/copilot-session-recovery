@@ -7,8 +7,6 @@ import {
   type ProtectionResult,
 } from "./macos-permissions.ts";
 import {
-  commandExists,
-  runProcess,
   type ProcessRunner,
   type ProcessResult,
 } from "../launch/process-runner.ts";
@@ -72,31 +70,25 @@ interface MacosPlatformDependencies {
 export function createMacosPlatformAdapter(
   dependencies: MacosPlatformDependencies = {},
 ): PlatformAdapter {
-  const lookupCommand = dependencies.commandExists ?? commandExists;
-  const processRunner = dependencies.runProcess ?? runProcess;
   const protectState = dependencies.protectState ?? protectMacState;
   const checkStateProtection =
     dependencies.checkStateProtection ?? checkMacStateProtection;
+  const unavailableMessage =
+    "Apple Terminal session recovery is not available on macOS yet.";
   const unsupportedRecovery = async (): Promise<ProcessResult> => {
-    throw new Error("Apple Terminal recovery is not implemented yet.");
+    throw new Error(unavailableMessage);
   };
   const terminal: TerminalLauncher = {
     name: "Apple Terminal",
     command: "/usr/bin/osascript",
+    unavailableMessage,
+    unavailableFix:
+      "Use Windows x64 for session recovery until macOS terminal launch support is implemented.",
     async available() {
-      if (!(await lookupCommand("/usr/bin/osascript", "darwin"))) {
-        return false;
-      }
-
-      const result = await processRunner({
-        executable: "/usr/bin/open",
-        args: ["-Ra", "Terminal"],
-      }).catch(() => undefined);
-
-      return result?.exitCode === 0;
+      return false;
     },
     preview() {
-      throw new Error("Apple Terminal recovery is not implemented yet.");
+      throw new Error(unavailableMessage);
     },
     launch: unsupportedRecovery,
   };

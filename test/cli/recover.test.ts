@@ -13,6 +13,7 @@ import type { TerminalLauncher } from "../../src/launch/terminal.ts";
 import { buildWindowsTerminalArgs } from "../../src/launch/windows-terminal.ts";
 import type { ProcessResult, ProcessRunner, ProcessSpec } from "../../src/launch/process-runner.ts";
 import type { RecoveryTab, SkippedSession } from "../../src/launch/recovery-plan.ts";
+import { createMacosPlatformAdapter } from "../../src/platform/macos.ts";
 import type { SessionRegistry } from "../../src/session/model.ts";
 import { atomicWriteJson } from "../../src/storage/atomic-json.ts";
 import type { AppPaths } from "../../src/storage/paths.ts";
@@ -189,6 +190,12 @@ async function createRecoverTestDependencies(
   const terminal: TerminalLauncher = {
     name: overrides.terminal?.name ?? "Test Terminal",
     command: overrides.terminal?.command ?? "test-terminal",
+    ...(overrides.terminal?.unavailableMessage === undefined
+      ? {}
+      : { unavailableMessage: overrides.terminal.unavailableMessage }),
+    ...(overrides.terminal?.unavailableFix === undefined
+      ? {}
+      : { unavailableFix: overrides.terminal.unavailableFix }),
     available: overrides.terminal?.available ?? (async () => true),
     preview: overrides.terminal?.preview ?? (() => "test-terminal preview"),
     launch: async (tabs, launchPaths) => {
@@ -353,7 +360,7 @@ test("a declined confirmation does not mutate profiles or launch", async (t) => 
   assert.match(deps.outputCapture.text(), /Recovery cancelled\./);
 });
 
-test("missing terminal leaves the registry unchanged and returns one", async (t) => {
+test("unavailable terminal leaves the registry unchanged and returns one", async (t) => {
   const deps = await createRecoverTestDependencies(t, {
     terminal: {
       available: async () => false,
@@ -368,7 +375,33 @@ test("missing terminal leaves the registry unchanged and returns one", async (t)
   );
   assert.equal(deps.terminalCalls.length, 0);
   assert.equal(deps.outputCapture.text(), "");
-  assert.match(deps.outputCapture.errorText(), /Test Terminal was not found\./);
+  assert.match(deps.outputCapture.errorText(), /Test Terminal is unavailable\./);
+});
+
+test("macOS recovery fails before preview when the adapter reports it unavailable", async (t) => {
+  const macosTerminal = createMacosPlatformAdapter().terminal;
+  const deps = await createRecoverTestDependencies(t, {
+    terminal: {
+      name: macosTerminal.name,
+      command: macosTerminal.command,
+      available: macosTerminal.available,
+      preview: macosTerminal.preview,
+      launch: macosTerminal.launch,
+      ...(macosTerminal.unavailableMessage === undefined
+        ? {}
+        : { unavailableMessage: macosTerminal.unavailableMessage }),
+    },
+  });
+
+  assert.equal(
+    await expectRegistryUnchanged(deps.paths.registryFile, () =>
+      recoverSessionsCommand({ dryRun: true, yes: false }, deps),
+    ),
+    1,
+  );
+  assert.equal(deps.terminalCalls.length, 0);
+  assert.equal(deps.outputCapture.prompts.length, 0);
+  assert.match(deps.outputCapture.errorText(), /not available on macOS yet/i);
 });
 
 test("confirmation persists profile overrides before launching once", async (t) => {

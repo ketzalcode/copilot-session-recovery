@@ -92,7 +92,7 @@ test("Windows adapter exposes state protection and terminal checks", async () =>
   ]);
 });
 
-test("macOS adapter checks Apple Terminal with structured probes", async () => {
+test("macOS adapter reports recovery unavailable until Apple Terminal launch support lands", async () => {
   const paths = createPlatformAdapter("darwin", "x64").resolvePaths({
     HOME: "/Users/ruben",
   });
@@ -132,17 +132,19 @@ test("macOS adapter checks Apple Terminal with structured probes", async () => {
     protected: true,
     detail: "checked",
   });
-  assert.equal(await adapter.terminal.available(), true);
-  assert.deepEqual(commandChecks, [
-    {
-      executable: "/usr/bin/osascript",
-      platform: "darwin",
-    },
-  ]);
-  assert.deepEqual(processCalls, [
-    {
-      executable: "/usr/bin/open",
-      args: ["-Ra", "Terminal"],
-    },
-  ]);
+  assert.equal(await adapter.terminal.available(), false);
+  assert.match(
+    adapter.terminal.unavailableMessage ?? "",
+    /not available on macOS yet/i,
+  );
+  assert.throws(
+    () => adapter.terminal.preview([], paths),
+    /not available on macOS yet/i,
+  );
+  await assert.rejects(
+    adapter.terminal.launch([], paths),
+    /not available on macOS yet/i,
+  );
+  assert.deepEqual(commandChecks, []);
+  assert.deepEqual(processCalls, []);
 });

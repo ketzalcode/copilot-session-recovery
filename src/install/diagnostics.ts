@@ -281,8 +281,10 @@ async function terminalCheck(
   return error(
     "terminal",
     `${deps.platform.terminal.name} is unavailable.`,
-    `${deps.platform.terminal.name} could not be confirmed on this installation.`,
-    "Repair the terminal integration for this platform.",
+    deps.platform.terminal.unavailableMessage ??
+      `${deps.platform.terminal.name} could not be confirmed on this installation.`,
+    deps.platform.terminal.unavailableFix ??
+      "Repair the terminal integration for this platform.",
   );
 }
 

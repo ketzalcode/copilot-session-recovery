@@ -129,7 +129,10 @@ export async function recoverSessionsCommand(
     );
 
     if (!(await deps.terminal.available())) {
-      deps.output.error(`${deps.terminal.name} was not found.`);
+      deps.output.error(
+        deps.terminal.unavailableMessage ??
+          `${deps.terminal.name} is unavailable.`,
+      );
       return 1;
     }
 
